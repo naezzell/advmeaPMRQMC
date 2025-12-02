@@ -91,7 +91,8 @@ def main(nt, L, lat, pbc, lam, beta, tau, parity, strnow, eps=None, l=None, Tste
     px = PauliTerm(1.0, [1], ['X'], n)
     pzz = PauliTerm(1.0, [2,3], ['Z', 'Z'], n)
     a = PauliH(n, [px, pzz])
-    # B = sum of 5 random Paulis
+    # B = sum of 5 random Paulis if you uncomment this
+    """
     pauli_terms = []
     for j in range(5):
         c = np.random.uniform(-1, 1)
@@ -99,7 +100,21 @@ def main(nt, L, lat, pbc, lam, beta, tau, parity, strnow, eps=None, l=None, Tste
         k = np.random.choice(range(1, 3+1))
         p.make_random(k)
         pauli_terms.append(p)
+    """
+    # B as in paper, if you want random comment this out
+    coeffs = [-0.773712, 0.155294, -0.966529]
+    term1 = PauliTerm(coeffs[0], [3,9], ['X', 'X'], n)
+    term2 = PauliTerm(coeffs[1], [3,6,9], ['Z', 'Z', 'Z'], n)
+    term3 = PauliTerm(coeffs[2], [1,6,7], ['Y', 'X', 'Z'], n)
+    pauli_terms = [term1, term2, term3]
     b = PauliH(n, pauli_terms)
+    with open(f"{dir_name}/A_unrotated.txt", 'w') as f:
+        f.write(a.to_pmr_str())
+    with open(f"{dir_name}/B_unrotated.txt", 'w') as f:
+        f.write(b.to_pmr_str())
+    if l > 0:
+        a = a.conjugate(u)
+        b = b.conjugate(u)
     with open(f"{dir_name}/A.txt", 'w') as f:
         f.write(a.to_pmr_str())
     with open(f"{dir_name}/B.txt", 'w') as f:
@@ -144,22 +159,22 @@ if __name__=="__main__":
     # lat -- lattice type: chain, square, triangle
     lat = "square"
     # L -- lattice size: L spins for chain, LxL for square, triangle
-    L = 2
+    L = 4
     # pbc -- periodic boundary conditions: 0 is False 1 is True
     pbc = 0
     # lam -- transverse field strength: a float
-    lam = 0.1
+    lam = 1.0
     # ======================================
     # Basic simulation parameters
     # ======================================
     # beta -- inverse temperature: positive float
     beta = 0.1
     # Tsteps -- equilibration steps: positive int
-    Tsteps = int(1e3)
+    Tsteps = 1000000
     # steps -- QMC updates: positive int
-    steps = int(1e4)
+    steps = 10000000
     # stepsPer... -- : # QMC updates per measurement: positive int
-    stepsPerMeasurement = int(1)
+    stepsPerMeasurement = 1000
     # ======================================
     # Simulation meta-parameters
     # ======================================
@@ -170,7 +185,7 @@ if __name__=="__main__":
     # nt -- number of threads to run with MPI: positive int
     # for nt > 1, may fail due to OSX permissions. If so,
     # simply execute ./job_file.sh directly in base directory.
-    nt = 1
+    nt = 6
     # ======================================
     # Advanced parameters 
     # ======================================
@@ -181,12 +196,12 @@ if __name__=="__main__":
     stand_tfim = True
     # l -- number of terms in random Pauli unitary: non-negative int
     # rotates Hamiltonian if l > 0 (see Appendix A, arXiv:2408.03924v1)
-    l = 0 
+    l = 0
     # parity -- samples within parity of: 0, 1, -1
     # only works for TFIM with stand_tfim = False
     # (see Appendix B, arXiv:2408.03924v2)
     # 0 is used for arXiv:2504.07295 and +1 for arXiv:2408.03924v1
-    parity = 0
+    parity = 1
     # ======================================
     # Set-up and execute simulation
     # ======================================
