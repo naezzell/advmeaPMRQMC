@@ -231,7 +231,7 @@ def make_param_file_footer(save=True, restart=False):
 //
 
 #define qmax     1000                // upper bound for the maximal length of the sequence of permutation operators
-#define Nbins    250                 // number of bins for the error estimation via binning analysis
+#define Nbins    100                 // number of bins for the error estimation via binning analysis
 #define EXHAUSTIVE_CYCLE_SEARCH      // comment this line for a more restrictive cycle search
 #define GAPS_GEOMETRIC_PARAMETER 0.8 // parameter of geometric distribution for the length of gaps in the cycle completion update
 #define COMPOSITE_UPDATE_BREAK_PROBABILITY  0.9   // exit composite update at each step with this probability
