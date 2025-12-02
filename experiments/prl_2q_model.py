@@ -52,6 +52,10 @@ def main(nt, n, gam, lam, beta, tau, strnow, seed, eps=None, l=None, Tsteps=1000
     else:
         uh0 = h0
         uh1 = h1
+    h = h0 + lam * h1
+    # save unrotated Hamiltonian file
+    with open(f"{dir_name}/H_unrotated.txt", 'w') as f:
+        f.write(h.to_pmr_str())
     uh = uh0 + lam * uh1
     # save Hamiltonian file
     with open(f"{dir_name}/H.txt", 'w') as f:
