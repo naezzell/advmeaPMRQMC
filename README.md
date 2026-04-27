@@ -1,8 +1,8 @@
 -----------------------------------------------------------------------------------------------------------
 
 This repository contains `C++` simulation code, data, and `Python` plotting scripts and utilities in support of the works:
-- <a href="https://doi.org/10.1038/s41524-025-01891-0">[1] Nic Ezzell, Lev Barash, Itay Hen, A universal black-box quantum Monte Carlo approach to quantum phase transitions, npj Computational Materials (2025).</a> (see also <a href="https://arxiv.org/abs/2408.03924"> the arxiv</a>)
-- <a href="https://arxiv.org/abs/2504.07295">[2] Nic Ezzell and Itay Hen, Advanced measurement techniques in quantum Monte Carlo: The permutation matrix representation approach, arXiv:2504.07295 (2025).</a>
+- <a href="https://doi.org/10.1038/s41524-025-01891-0">[1] Nic Ezzell, Lev Barash, Itay Hen, A universal black-box quantum Monte Carlo approach to quantum phase transitions, npj Computational Materials (2025).</a> (see also <a href="https://arxiv.org/abs/2408.03924"> the arXiv</a>)
+- <a href="https://doi.org/10.1016/j.cpc.2026.110019">[2] Nic Ezzell and Itay Hen, Advanced measurement techniques in quantum Monte Carlo: The permutation matrix representation approach, Computer Physics Communications (2026).</a> (see also <a href="https://arxiv.org/abs/2504.07295"> the arXiv</a>)
 
 -----------------------------------------------------------------------------------------------------------
 # Attribution
