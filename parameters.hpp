@@ -24,8 +24,8 @@
 #define Tsteps 100000 // number of Monte-Carlo initial equilibration updates
 #define steps 1000000 // number of Monte-Carlo updates
 #define stepsPerMeasurement 10 // number of Monte-Carlo updates per measurement
-#define beta 0.1 // inverse temperature
-#define tau 0.05 //imaginary propogation time
+#define beta 6.0 // inverse temperature
+#define tau 0.5 //imaginary propogation time
 #define parity_cond 0 // controls parity subspace measurement 
 
 //
@@ -33,17 +33,19 @@
 //
 //#define MEASURE_H                    // <H>             is measured when this line is not commented
 //#define MEASURE_H2                   // <H^2>           is measured when this line is not commented
-//#define MEASURE_HDIAG                // <H_{diag}>      is measured when this line is not commented
-//#define MEASURE_HDIAG2               // <H_{diag}^2>    is measured when this line is not commented
+#define MEASURE_HDIAG                // <H_{diag}>      is measured when this line is not commented
+#define MEASURE_HDIAG2               // <H_{diag}^2>    is measured when this line is not commented
 //#define MEASURE_HOFFDIAG             // <H_{offdiag}>   is measured when this line is not commented
 //#define MEASURE_HOFFDIAG2            // <H_{offdiag}^2> is measured when this line is not commented
 //#define MEASURE_Z_MAGNETIZATION      // Z-magnetization is measured when this line is not commented
-//#define MEASURE_HDIAG_CORR
-//#define MEASURE_HDIAG_EINT
-//#define MEASURE_HDIAG_FINT
+#define MEASURE_HDIAG_CORR
+#define MEASURE_HDIAG_EINT
+#define MEASURE_HDIAG_FINT
 //#define MEASURE_HOFFDIAG_CORR
 //#define MEASURE_HOFFDIAG_EINT
 //#define MEASURE_HOFFDIAG_FINT
+//#define MEASURE_HDIAG_FINT2
+#define MEASURE_HDIAG_K2INT
 
 //
 // Below are the implementation parameters:

@@ -66,7 +66,7 @@ int cycle_min_len, cycle_max_len, found_cycles, min_index, max_index;
 #define Nobservables 0
 #endif
 
-const int N_all_observables = Nobservables + 14;
+const int N_all_observables = Nobservables + 16;
 int valid_observable[N_all_observables];
 
 unsigned long long bin_length = measurements / Nbins, bin_length_old;
@@ -422,6 +422,12 @@ void init(){
 #ifdef MEASURE_PARITY
 	valid_observable[Nobservables + 13] = 1;
 #endif
+#ifdef MEASURE_HDIAG_FINT2
+	valid_observable[Nobservables + 14] = 1;
+#endif
+#ifdef MEASURE_HDIAG_K2INT
+	valid_observable[Nobservables + 15] = 1;
+#endif	
 }
 
 double Metropolis(ExExFloat newWeight){
@@ -769,6 +775,234 @@ double measure_Hdiag_Fint(){
 	}
 }
 
+double measure_Hdiag_Fint2(){
+    /**
+     * Estimates \int_0^{\beta/2} \tau <Hdiag(\tau) Hdiag> d\tau
+     *
+     * Equivalent simplified version of measure_Hdiag_Fint().
+     *
+     * The first two terms in the r-sum from Theorem 2 simplify via the
+     * reverse-order Leibniz rule to
+     *
+     *   (beta^2/8) *
+     *   ( E_q exp[-beta [E_0,...,E_q]]
+     *     + exp[-beta [E_0,...,E_{q-1}]] ).
+     *
+     * This form is convenient because both divided differences are cached in d:
+     *
+     *   exp[-beta [E_0,...,E_q]]
+     *       = d->divdiffs[q] * beta_pow_factorial[q]
+     *
+     *   exp[-beta [E_0,...,E_{q-1}]]
+     *       = d->divdiffs[q-1] * beta_pow_factorial[q-1].
+     *
+     * The remaining double sum over (i-r) is unchanged.
+     */
+
+    if (q == 0) {
+        return (d->z[0]) * (d->z[0]) / 8.0; // (-beta Ez0)(-beta Ez0)/8
+    } else {
+        ExExFloat rddval, curr, tot_num(0.0);
+
+        // exp[-beta [E_0,...,E_q]]
+        ExExFloat ddprefac = d->divdiffs[q] * beta_pow_factorial[q];
+
+        // exp[-beta [E_0,...,E_{q-1}]]
+        ExExFloat ddprev = d->divdiffs[q-1] * beta_pow_factorial[q-1];
+
+        double Ez0 = d->z[0] / (-beta);
+        double Ezq = d->z[q] / (-beta);
+
+        /*
+         * Simplified contribution:
+         *
+         *   (beta^2/8) *
+         *   ( E_q exp[-beta [E_0,...,E_q]]
+         *     + exp[-beta [E_0,...,E_{q-1}]] )
+         */
+        tot_num += (ddprefac * Ezq + ddprev) * (beta * beta / 8.0);
+
+        /*
+         * Correction term:
+         *
+         *   - sum_{r=0}^q
+         *       exp[-beta/2 [E_0,...,E_r]]
+         *       sum_{i=r+1}^q
+         *          (i-r) exp[-beta/2 [E_r,...,E_q,E_i]]
+         */
+
+        ds1->CurrentLength = 0;
+        ds2->CurrentLength = 0;
+
+        // ds2 initially stores the half-beta suffix [E_0,...,E_q],
+        // added in reverse order so RemoveElement() advances the suffix.
+        for(int k = q; k >= 0; k--) {
+            ds2->AddElement(d->z[k] / 2);
+        }
+
+        for(int r = 0; r <= q; r++) {
+            ds1->AddElement(d->z[r] / 2);
+
+            // exp[-beta/2 [E_0,...,E_r]]
+            rddval = ds1->divdiffs[r] * beta_div2_pow_factorial[r];
+
+            curr = ExExFloat(0.0);
+
+            for(int i = r + 1; i <= q; i++) {
+                // Temporarily append E_i to [E_r,...,E_q].
+                ds2->AddElement(d->z[i] / 2);
+
+                // exp[-beta/2 [E_r,...,E_q,E_i]]
+                curr += ds2->divdiffs[q-r+1]
+                      * beta_div2_pow_factorial[q-r+1]
+                      * (i-r);
+
+                ds2->RemoveElement();
+            }
+
+            tot_num -= rddval * curr;
+
+            // Move suffix from [E_r,...,E_q] to [E_{r+1},...,E_q].
+            ds2->RemoveElement();
+        }
+
+        return (tot_num / ddprefac * Ez0).get_double();
+    }
+}
+
+double measure_Hdiag_k2Int(){
+    /**
+     * Estimates
+     *
+     *   int_0^{beta/2} tau^2 <Hdiag(tau) Hdiag> dtau
+     *
+     * using the corrected estimator:
+     *
+     * q = 0:
+     *
+     *   beta^3 E_0^2 / 24
+     *
+     * q > 0:
+     *
+     *   beta^3 E_q^2 / 24
+     *
+     *   + (beta^3 E_q / 24)
+     *       * exp[-beta [E_0,...,E_{q-1}]]
+     *         / exp[-beta [E_0,...,E_q]]
+     *
+     *   - 2 E_0 / exp[-beta [E_0,...,E_q]]
+     *       * sum_{r=0}^q exp[-beta/2 [E_0,...,E_r]]
+     *           sum_{i=r+1}^q
+     *               sum_{j=i}^q
+     *                   i exp[-beta/2 [E_r,...,E_q,E_i,E_j]]
+     *
+     * Conventions:
+     *
+     *   d->z[k] = -beta * E_k.
+     */
+
+    if(q == 0){
+        // beta^3 E_0^2 / 24 = beta * (-beta E_0)^2 / 24
+      return beta * (d->z[0]) * (d->z[0]) / 24.0;
+    }
+
+    double Ez0 = d->z[0] / (-beta);
+    double Ezq = d->z[q] / (-beta);
+
+    // exp[-beta [E_0,...,E_q]]
+    ExExFloat ddprefac = d->divdiffs[q] * beta_pow_factorial[q];
+
+    // exp[-beta [E_0,...,E_{q-1}]]
+    ExExFloat ddprev = d->divdiffs[q-1] * beta_pow_factorial[q-1];
+
+    /*
+     * First two simplified terms:
+     *
+     *   beta^3 E_q^2 / 24
+     *
+     *   + (beta^3 E_q / 24)
+     *       * exp[-beta [E_0,...,E_{q-1}]]
+     *         / exp[-beta [E_0,...,E_q]]
+     */
+    ExExFloat result(0.0);
+
+    result += beta * beta * beta * Ezq * Ezq / 24.0;
+    result += (ddprev / ddprefac) * (beta * beta * beta * Ezq / 24.0);
+
+    /*
+     * Correction term:
+     *
+     *   - 2 E_0 / exp[-beta [E_0,...,E_q]]
+     *       * sum_{r=0}^q exp[-beta/2 [E_0,...,E_r]]
+     *           sum_{i=r+1}^q
+     *               sum_{j=i}^q
+     *                   i exp[-beta/2 [E_r,...,E_q,E_i,E_j]]
+     */
+
+    ExExFloat correction_sum(0.0);
+
+    ds1->CurrentLength = 0;
+    ds2->CurrentLength = 0;
+
+    /*
+     * ds2 initially stores [E_0,...,E_q] at half beta.
+     * At the end of each r iteration, RemoveElement() advances
+     * the suffix:
+     *
+     *   [E_r,...,E_q] -> [E_{r+1},...,E_q].
+     */
+    for(int k = q; k >= 0; k--){
+        ds2->AddElement(d->z[k] / 2);
+    }
+
+    for(int r = 0; r <= q; r++){
+
+        ds1->AddElement(d->z[r] / 2);
+
+        // exp[-beta/2 [E_0,...,E_r]]
+        ExExFloat prefix_dd =
+            ds1->divdiffs[r] * beta_div2_pow_factorial[r];
+
+        ExExFloat inner_sum(0.0);
+
+        /*
+         * At this point ds2 represents [E_r,...,E_q].
+         */
+        for(int i = r + 1; i <= q; i++){
+            for(int j = i; j <= q; j++){
+
+                // Temporarily append E_i and E_j.
+                ds2->AddElement(d->z[i] / 2);
+                ds2->AddElement(d->z[j] / 2);
+
+                /*
+                 * [E_r,...,E_q,E_i,E_j] has
+                 *
+                 *   (q-r+1) + 2 = q-r+3
+                 *
+                 * arguments, so the divided-difference order is q-r+2.
+                 */
+                inner_sum +=
+                    ds2->divdiffs[q - r + 2]
+                  * beta_div2_pow_factorial[q - r + 2]
+                  * (i - r);
+
+                ds2->RemoveElement();
+                ds2->RemoveElement();
+            }
+        }
+
+        correction_sum += prefix_dd * inner_sum;
+
+        // Advance suffix [E_r,...,E_q] -> [E_{r+1},...,E_q].
+        ds2->RemoveElement();
+    }
+
+    result += (2.0 * Ez0 / ddprefac) * correction_sum;
+
+    return result.get_double();
+}
+
 double measure_Hoffdiag_Fint(){
 	/** 
 	* Estimates \int_0^{\beta/2} \tau <Hoffdiag(\tau)Hoffdiag> d\tau
@@ -821,7 +1055,9 @@ std::string name_of_observable(int n){
 			case 10: s = "measure_Hoffdiag_corr"; break;
 			case 11: s = "measure_Hoffdiag_Eint"; break;
 			case 12: s = "measure_Hoffdiag_Fint"; break;
-			case 13: s = "measure_parity"; break; 
+			case 13: s = "measure_parity"; break;
+			case 14: s = "measure_Hdiag_Fint2"; break;
+		        case 15: s = "measure_Hdiag_k2Int"; break; 
 	}
 	return s;
 }
@@ -1789,8 +2025,8 @@ double measure_observable(int n){
 			case 10: R = measure_AB_corr(0, 5); break; 
 			case 11: R = measure_AB_Eint(0, 5); break; 
 			case 12: R = measure_AB_Fint(0, 5); break;
-		        case 13: R = (measure_AB_real(0, 5) + measure_AB_real(5, 0)) / 2.0; break;
-		        case 14: R = (measure_AB_imag(0, 5) - measure_AB_imag(5, 0)) / 2.0; break;
+			case 13: R = (measure_AB_real(0, 5) + measure_AB_real(5, 0)) / 2.0; break;
+			case 14: R = (measure_AB_imag(0, 5) - measure_AB_imag(5, 0)) / 2.0; break;
 		}
 #endif
 	} else  switch(n-Nobservables){
@@ -1802,12 +2038,14 @@ double measure_observable(int n){
 			case 5:	R = measure_Hoffdiag2(); break;
 			case 6: R = measure_Z_magnetization(); break;
 			case 7: R = measure_Hdiag_corr(); break;
-            case 8: R = measure_Hdiag_Eint(); break;
+                        case 8: R = measure_Hdiag_Eint(); break;
 			case 9: R = measure_Hdiag_Fint(); break;
 			case 10: R = measure_Hoffdiag_corr(); break; 
 			case 11: R = measure_Hoffdiag_Eint(); break;
 			case 12: R = measure_Hoffdiag_Fint(); break;
-			case 13: R = measure_parity(); break; 
+			case 13: R = measure_parity(); break;
+			case 14: R = measure_Hdiag_Fint2(); break;
+	                case 15: R = measure_Hdiag_k2Int(); break; 
 	}
 	return R;
 }
@@ -1834,7 +2072,7 @@ void measure(){
 
 double mean_O[N_all_observables], stdev_O[N_all_observables], mean_O_backup[N_all_observables];
 
-const int N_derived_observables = 5;  // we define number of derived observables
+const int N_derived_observables = 8;  // we define number of derived observables
 
 std::string name_of_derived_observable(int n){ // we define names of derived observables
 	std::string s;
@@ -1844,6 +2082,9 @@ std::string name_of_derived_observable(int n){ // we define names of derived obs
 		case 2 : s = "offdiagonal energy susceptibility"; break;
 		case 3 : s = "offdiagonal fidelity susceptibility"; break;
 		case 4 : s = "specific heat"; break;
+	        case 5:  s = "k2 susceptibility"; break;
+		case 6:  s = "m0/m1 ratio"; break;
+		case 7:  s = "m1/m2 ratio"; break;
 	}
 	return s;
 }
@@ -1855,7 +2096,10 @@ int valid_derived_observable(int n){ // we define which observables are needed f
 		case 1: r = valid_observable[Nobservables+2] && valid_observable[Nobservables+9]; break;
 		case 2: r = valid_observable[Nobservables+4] && valid_observable[Nobservables+11]; break;
 		case 3: r = valid_observable[Nobservables+4] && valid_observable[Nobservables+12]; break;
-		case 4: r = valid_observable[Nobservables] && valid_observable[Nobservables+1]; break; 
+		case 4: r = valid_observable[Nobservables] && valid_observable[Nobservables+1]; break;
+	        case 5: r = valid_observable[Nobservables+2] && valid_observable[Nobservables+15]; break;
+	        case 6: r = valid_observable[Nobservables+2] && valid_observable[Nobservables+8] && valid_observable[Nobservables+9]; break;
+		case 7: r = valid_observable[Nobservables+2] && valid_observable[Nobservables+9] && valid_observable[Nobservables+15]; break;
 	}
 	return r;
 }
@@ -1867,7 +2111,11 @@ double compute_derived_observable(int n){ // we compute the derived observables
 		case 1 : R = mean_O[Nobservables+9] - (beta*mean_O[Nobservables+2])*(beta*mean_O[Nobservables+2])/8; break;
 		case 2 : R = mean_O[Nobservables+11] - beta*mean_O[Nobservables+4]*mean_O[Nobservables+4]; break;
 		case 3 : R = mean_O[Nobservables+12] - (beta*mean_O[Nobservables+4])*(beta*mean_O[Nobservables+4])/8; break;
-		case 4 : R = beta*beta*(mean_O[Nobservables+1] -  (mean_O[Nobservables])*(mean_O[Nobservables])); break; 
+		case 4 : R = beta*beta*(mean_O[Nobservables+1] -  (mean_O[Nobservables])*(mean_O[Nobservables])); break;
+	case 5 : R = mean_O[Nobservables+15] - beta*(beta*mean_O[Nobservables+2])*(beta*mean_O[Nobservables+2])/24.0; break;
+	case 6 : R = (mean_O[Nobservables+8] - beta*mean_O[Nobservables+2]*mean_O[Nobservables+2]) / 2.0 /  (mean_O[Nobservables+9] - (beta*mean_O[Nobservables+2])*(beta*mean_O[Nobservables+2])/8); break;
+	case 7 : R = 2 * (mean_O[Nobservables+9] - (beta*mean_O[Nobservables+2])*(beta*mean_O[Nobservables+2])/8) / (mean_O[Nobservables+15] - beta*(beta*mean_O[Nobservables+2])*(beta*mean_O[Nobservables+2])/24.0); break;
+	       
 	}
 	return R;
 }

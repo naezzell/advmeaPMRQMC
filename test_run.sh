@@ -10,12 +10,12 @@
 
 # code to set up simulation
 g++ -O3 -std=c++11 -o prepare.bin prepare.cpp
-./prepare.bin H.txt A.txt A.txt A.txt A.txt A.txt B.txt B.txt B.txt B.txt B.txt A.txt A.txt A.txt A.txt A.txt
-#./prepare.bin H.txt
+#./prepare.bin H.txt A.txt A.txt A.txt A.txt A.txt B.txt B.txt B.txt B.txt B.txt A.txt A.txt A.txt A.txt A.txt
+./prepare.bin H.txt
 
 # compiles and executes simulation on a single thread
-g++ -O3 -std=c++11 -o PMRQMC.bin PMRQMC.cpp
-./PMRQMC.bin > single_thread_output.txt
+#g++ -O3 -std=c++11 -o PMRQMC.bin PMRQMC.cpp
+#./PMRQMC.bin > single_thread_output.txt
 
 #
 # Below, we include ways to compile with MPI to perform lazy
@@ -25,8 +25,8 @@ g++ -O3 -std=c++11 -o PMRQMC.bin PMRQMC.cpp
 #
 
 # compile and run MPI locally (tested on MAC OSX)
-#mpicxx -O3 -std=c++11 -o PMRQMC_mpi.bin PMRQMC_mpi.cpp
-#mpirun -n 5 ./PMRQMC_mpi.bin > therm_test_output.txt
+mpicxx -O3 -std=c++11 -o PMRQMC_mpi.bin PMRQMC_mpi.cpp
+mpirun -n 5 ./PMRQMC_mpi.bin > therm_test_output.txt
 
 # compile and run MPI on an HPC that uses the slurm scheduler
 #mpicxx -O3 -o PMRQMC_mpi.bin PMRQMC_mpi.cpp
