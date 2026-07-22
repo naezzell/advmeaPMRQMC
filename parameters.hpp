@@ -21,10 +21,11 @@
 // Below are the parameter values:
 //
     
+#include <cstddef>
 #define Tsteps 100000 // number of Monte-Carlo initial equilibration updates
 #define steps 1000000 // number of Monte-Carlo updates
 #define stepsPerMeasurement 10 // number of Monte-Carlo updates per measurement
-#define beta 6.0 // inverse temperature
+#define beta 5.0 // inverse temperature
 #define tau 0.5 //imaginary propogation time
 #define parity_cond 0 // controls parity subspace measurement 
 
@@ -46,6 +47,11 @@
 //#define MEASURE_HOFFDIAG_FINT
 //#define MEASURE_HDIAG_FINT2
 #define MEASURE_HDIAG_K2INT
+
+#define MEASURE_HDIAG_KINT
+static constexpr struct SPECGAP_CONFIG {
+  size_t KMAX{3};
+} specgap_config;
 
 //
 // Below are the implementation parameters:

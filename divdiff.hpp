@@ -153,7 +153,7 @@ public:
 			else return 0;
 		}
 	}
-	double get_double(){ return ldexp(mantissa,exponent);}
+	double get_double() const { return ldexp(mantissa,exponent);}
 	int sgn(){ return (mantissa > 0.0) - (mantissa < 0.0);}
 	ExExFloat abs(){ExExFloat res; res.mantissa = fabs(mantissa); res.exponent = exponent; return res;}
 	ExExFloat SqRt(){ ExExFloat res;

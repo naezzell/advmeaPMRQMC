@@ -1,0 +1,29 @@
+[
+  {
+    "file": "prepare.cpp",
+    "arguments": [
+      "/usr/bin/g++",
+      "-O3",
+      "-std=c++23",
+      "-o",
+      "prepare.bin",
+      "prepare.cpp"
+    ],
+    "directory": "/home/jjkao/research/advmeaPMRQMC",
+    "output": "prepare.bin"
+  },
+  {
+    "file": "PMRQMC_mpi.cpp",
+    "arguments": [
+      "/usr/bin/g++",
+      "-O3",
+      "-std=c++23",
+      "-o",
+      "PMRQMC_mpi.bin",
+      "PMRQMC_mpi.cpp",
+      "-I/usr/include"
+    ],
+    "directory": "/home/jjkao/research/advmeaPMRQMC",
+    "output": "PMRQMC_mpi.bin"
+  }
+]
