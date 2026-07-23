@@ -38,7 +38,7 @@
 #include "divdiff.hpp"
 #include "hamiltonian.hpp" // use a header file, which defines the Hamiltonian and the custom observables
 #include "parameters.hpp" // parameters of the simulation such as the number of Monte-Carlo updates
-#include "PMR.hpp"
+#include "fast_susceptibility.hpp"
 
 #define measurements (steps / stepsPerMeasurement)
 
@@ -1355,12 +1355,34 @@ double measure_Hdiag_k2Int() {
 
 static double measure_Hdiag_kint(size_t k) {
   static std::array<double, specgap_config.KMAX> ret{};
-  if (k == 0) {
-    std::vector<double> Ei{};
-    for (decltype(q) ii = 0; ii < q+1; ++ii) {
-      Ei.push_back(d->z[ii] / -beta);
+  static const std::vector<double> beta_pow_fac = [] {
+    std::vector<double> ret(qmax);
+    for (decltype(q) ii = 0; ii < qmax; ++ii) {
+      ret[ii] = beta_pow_factorial[ii].get_double();
     }
-    ret = Mk<specgap_config.KMAX>(Ei, beta);
+    return ret;
+  }();
+  static const std::vector<double> beta_div2_pow_fac = [] {
+    std::vector<double> ret(qmax);
+    for (decltype(q) ii = 0; ii < qmax; ++ii) {
+      ret[ii] = beta_div2_pow_factorial[ii].get_double();
+    }
+    return ret;
+  }();
+
+  if (k == 0) {
+    std::vector<double> Ei(q+1);
+    for (decltype(q) ii = 0; ii < q+1; ++ii) {
+      Ei[ii] = (d->z[ii] / -beta);
+    }
+
+    std::vector<double> dd_beta(q+1);
+    for (decltype(q) ii = 0; ii < q+1; ++ii) {
+      dd_beta[ii] = d->divdiffs[ii].get_double();
+    }
+
+
+    ret = Mk<specgap_config.KMAX>(Ei, dd_beta, beta_pow_fac, beta_div2_pow_fac, beta);
   }
   return ret[k];
 }
