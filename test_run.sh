@@ -27,7 +27,7 @@ g++ -O3 -std=c++23 -o prepare.bin prepare.cpp
 # compile and run MPI locally (tested on MAC OSX)
 # mpicxx -O3 -std=c++11 -o PMRQMC_mpi.bin PMRQMC_mpi.cpp
 mpicxx -O3 -std=c++23 -o PMRQMC_mpi.bin PMRQMC_mpi.cpp
-mpirun -n 8 ./PMRQMC_mpi.bin > therm_test_output.txt
+mpirun -n 6 ./PMRQMC_mpi.bin > therm_test_output.txt
 
 # compile and run MPI on an HPC that uses the slurm scheduler
 #mpicxx -O3 -o PMRQMC_mpi.bin PMRQMC_mpi.cpp

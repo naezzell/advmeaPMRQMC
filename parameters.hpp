@@ -35,22 +35,22 @@
 //#define MEASURE_H                    // <H>             is measured when this line is not commented
 //#define MEASURE_H2                   // <H^2>           is measured when this line is not commented
 #define MEASURE_HDIAG                // <H_{diag}>      is measured when this line is not commented
-#define MEASURE_HDIAG2               // <H_{diag}^2>    is measured when this line is not commented
+// #define MEASURE_HDIAG2               // <H_{diag}^2>    is measured when this line is not commented
 //#define MEASURE_HOFFDIAG             // <H_{offdiag}>   is measured when this line is not commented
 //#define MEASURE_HOFFDIAG2            // <H_{offdiag}^2> is measured when this line is not commented
 //#define MEASURE_Z_MAGNETIZATION      // Z-magnetization is measured when this line is not commented
-#define MEASURE_HDIAG_CORR
-#define MEASURE_HDIAG_EINT
-#define MEASURE_HDIAG_FINT
+// #define MEASURE_HDIAG_CORR
+// #define MEASURE_HDIAG_EINT
+// #define MEASURE_HDIAG_FINT
 //#define MEASURE_HOFFDIAG_CORR
-//#define MEASURE_HOFFDIAG_EINT
-//#define MEASURE_HOFFDIAG_FINT
-//#define MEASURE_HDIAG_FINT2
-#define MEASURE_HDIAG_K2INT
+// #define MEASURE_HOFFDIAG_EINT
+// #define MEASURE_HOFFDIAG_FINT
+// #define MEASURE_HDIAG_FINT2
+// #define MEASURE_HDIAG_K2INT
 
 #define MEASURE_HDIAG_KINT
 static constexpr struct SPECGAP_CONFIG {
-  size_t KMAX{3};
+  size_t KMAX{5};
 } specgap_config;
 
 //

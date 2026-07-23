@@ -1357,12 +1357,9 @@ static double measure_Hdiag_kint(size_t k) {
   static std::array<double, specgap_config.KMAX> ret{};
   if (k == 0) {
     std::vector<double> Ei{};
-    // std::cout << q << ": ";
     for (decltype(q) ii = 0; ii < q+1; ++ii) {
       Ei.push_back(d->z[ii] / -beta);
-      // std::cout << d->z[ii] / -beta << " ";
     }
-    std::cout << "\n";
     ret = Mk<specgap_config.KMAX>(Ei, beta);
   }
   return ret[k];
@@ -3333,13 +3330,15 @@ int valid_derived_observable(int n) { // we define which observables are needed
   const int ratio_start          = susceptibility_start + N_specgap_susceptibilities; // Index 8 + KMAX
   if (n >= ratio_start) {
       size_t kk = n - ratio_start;
-      return valid_observable[Nobservables + 2] && valid_observable[Nobservables + 16 + kk];
+      // return false;
+      return valid_observable[Nobservables + 2] &&
+             valid_observable[Nobservables + 16 + kk] &&
+             valid_observable[Nobservables + 16 + kk + 1];
   } 
   else if (n >= susceptibility_start) {
       size_t kk = n - susceptibility_start;
       return valid_observable[Nobservables + 2] &&
-             valid_observable[Nobservables + 16 + kk] &&
-             valid_observable[Nobservables + 16 + kk + 1];
+             valid_observable[Nobservables + 16 + kk];
   }  
 
   switch (n) {
@@ -3376,6 +3375,8 @@ int valid_derived_observable(int n) { // we define which observables are needed
         valid_observable[Nobservables + 9] &&
         valid_observable[Nobservables + 15];
     break;
+  default:
+    r = false;
   }
   return r;
 }
@@ -3397,13 +3398,6 @@ double compute_derived_observable(int n) { // we compute the derived observables
       * mean_O[Nobservables + 2] * mean_O[Nobservables + 2];
   }  
 
-  // if (n >= N_derived_observables_base - N_specgap_observables) {
-  //   size_t kk = n - (N_derived_observables_base - N_specgap_observables);
-  //   // return valid_observable[Nobservables + 2] && valid_observable[Nobservables + 16 + kk];
-  //   return mean_O[Nobservables + 16 + kk] - (std::pow(beta, kk + 1) / (2 << kk) / (kk+1))
-  //     * mean_O[Nobservables + 2] * mean_O[Nobservables + 2];
-  // }
-  
   double R = 0;
   switch (n) {
   case 0:

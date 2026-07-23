@@ -1,2 +1,0 @@
-RNG seed = 82276698
-Parameters: beta = 20, Tsteps = 100000, steps = 1000000
