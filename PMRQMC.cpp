@@ -39,7 +39,7 @@ int main(int argc, char* argv[]){
 	} else if(const char* task_id_env = std::getenv("SLURM_ARRAY_TASK_ID")){
 		mpi_rank = std::stoi(task_id_env); mpi_size = mpi_rank + 1;
 	}
-	divdiff_init(); divdiff dd(q+4,500); divdiff ddfs(q+4,500); divdiff dd1(q+4,500); divdiff dd2(q+4,500); 
+	divdiff_init(); divdiff dd(q+4,500); divdiff ddfs(q+4,500); divdiff dd1(q+4,500); divdiff dd2(q+4,500);
 	d=&dd; dfs=&ddfs; ds1=&dd1; ds2=&dd2;
 	init_rng();
 	if(check_QMC_data()){
