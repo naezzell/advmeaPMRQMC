@@ -36,64 +36,39 @@ int main(int argc, char *argv[]) {
 #ifdef SAVE_UNFINISHED_CALCULATION
   signal(SIGTERM, signalHandler);
 #endif
-  if (steps < Nbins * stepsPerMeasurement) {
-    std::cout
-        << "Error: steps cannot be smaller than Nbins*stepsPerMeasurement."
-        << std::endl;
-    exit(1);
-  }
-  if (N == 0) {
-    std::cout << "Error: no particles found. At least one particle must be "
-                 "described by the Hamiltonian."
-              << std::endl;
-    exit(1);
-  }
-  start_time = get_cpu_time();
-  int i, j, k, o = 0;
-  if (argc > 1) {
-    mpi_rank = std::stoi(argv[1]);
-    mpi_size = mpi_rank + 1;
-  } else if (const char *task_id_env = std::getenv("SLURM_ARRAY_TASK_ID")) {
-    mpi_rank = std::stoi(task_id_env);
-    mpi_size = mpi_rank + 1;
-  }
-  divdiff_init();
-  divdiff dd(q + 4, 500);
-  divdiff ddfs(q + 4, 500);
-  divdiff dd1(q + 4, 500);
-  divdiff dd2(q + 4, 500);
-  d = &dd;
-  dfs = &ddfs;
-  ds1 = &dd1;
-  ds2 = &dd2;
-  init_rng();
-  if (check_QMC_data()) {
-    load_QMC_data();
-    init_basic();
-  } else {
-    init();
-    std::cout << "RNG seed = " << rng_seed << std::endl;
-  }
-  std::cout << "Parameters: beta = " << beta << ", Tsteps = " << Tsteps
-            << ", steps = " << steps << std::endl;
-  if (TstepsFinished) {
-    if (step > 0 && step < stepsPerMeasurement &&
-        measurement_step < measurements) {
-      for (; step < stepsPerMeasurement; step++)
-        update();
-      measure();
-      measurement_step++;
-    }
-  } else {
-    for (; step < Tsteps; step++)
-      update();
-    TstepsFinished = 1;
-  }
-  for (; measurement_step < measurements; measurement_step++) {
-    for (step = 0; step < stepsPerMeasurement; step++)
-      update();
-    measure();
-  }
+	if(steps < Nbins*stepsPerMeasurement){
+		std::cout << "Error: steps cannot be smaller than Nbins*stepsPerMeasurement." << std::endl;
+		exit(1);
+	}
+	if(N == 0){
+		std::cout << "Error: no particles found. At least one particle must be described by the Hamiltonian." << std::endl;
+		exit(1);
+	}
+	start_time = get_cpu_time(); int i,j,k,o=0;
+	if(argc > 1){
+		mpi_rank = std::stoi(argv[1]); mpi_size = mpi_rank + 1;
+	} else if(const char* task_id_env = std::getenv("SLURM_ARRAY_TASK_ID")){
+		mpi_rank = std::stoi(task_id_env); mpi_size = mpi_rank + 1;
+	}
+	divdiff_init(); divdiff dd(q+4,500); divdiff ddfs(q+4,500); divdiff dd1(q+4,500); divdiff dd2(q+4,500);
+	d=&dd; dfs=&ddfs; ds1=&dd1; ds2=&dd2;
+	init_rng();
+	if(check_QMC_data()){
+		load_QMC_data(); init_basic();
+	} else{
+		init();	std::cout << "RNG seed = " << rng_seed << std::endl;
+	}
+	std::cout << "Parameters: beta = " << beta << ", Tsteps = " << Tsteps << ", steps = " << steps << std::endl;
+	if(TstepsFinished){
+		if(step>0 && step<stepsPerMeasurement && measurement_step<measurements){
+			for(;step<stepsPerMeasurement;step++) update(); measure(); measurement_step++;
+		}
+	} else{
+		for(;step<Tsteps;step++) update(); TstepsFinished = 1;
+	}
+	for(;measurement_step<measurements;measurement_step++){
+		for(step=0;step<stepsPerMeasurement;step++) update(); measure();
+	}
 #ifdef SAVE_COMPLETED_CALCULATION
   save_QMC_data(0);
 #endif
