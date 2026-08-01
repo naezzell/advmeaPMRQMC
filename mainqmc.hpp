@@ -653,7 +653,8 @@ double measure_Hdiag(){
 	* 
 	* See Eq. 24 in [arXiv:2307.06503]
 	*/
-	return currEnergy;
+	// return currEnergy;
+	return lattice.to_ullong();
 }
 
 double measure_Hdiag2(){
@@ -874,9 +875,17 @@ static double measure_Hdiag_kint(size_t k) {
 
   if (k == 0) {
     std::vector<double> Ei(q+1);
+    std::vector<double> Oi(q+1);
+    auto lattice_backup = lattice;
     for (decltype(q) ii = 0; ii < q+1; ++ii) {
       Ei[ii] = (d->z[ii] / -beta);
+      Oi[ii] = lattice.to_ullong();
+
+      if (ii < q) {
+      	ApplyOperator(Sq[ii]);
+      }
     }
+    lattice = lattice_backup;
 
     std::vector<double> dd_beta(q+1);
     for (decltype(q) ii = 0; ii < q+1; ++ii) {
@@ -884,7 +893,7 @@ static double measure_Hdiag_kint(size_t k) {
     }
 
 
-    ret = Mk<specgap_config.KMAX>(Ei, dd_beta, beta_pow_fac, beta_div2_pow_fac, beta);
+    ret = Mk<specgap_config.KMAX>(Ei, Oi, dd_beta, beta_pow_fac, beta_div2_pow_fac, beta);
   }
   return ret[k];
 }

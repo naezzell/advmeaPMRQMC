@@ -26,7 +26,7 @@
 #define steps 1000000 // number of Monte-Carlo updates
 // #define steps 50000000 // number of Monte-Carlo updates
 #define stepsPerMeasurement 10 // number of Monte-Carlo updates per measurement
-#define beta 25.0 // inverse temperature
+#define beta 10.0 // inverse temperature
 #define tau 0.5 //imaginary propogation time
 #define parity_cond 0 // controls parity subspace measurement 
 
