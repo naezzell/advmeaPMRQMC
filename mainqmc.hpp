@@ -30,6 +30,7 @@
 #include"hamiltonian.hpp" // use a header file, which defines the Hamiltonian and the custom observables
 #include"parameters.hpp"  // parameters of the simulation such as the number of Monte-Carlo updates
 #include "fast_susceptibility.hpp"
+#include "test_operator.hpp"
 
 #define measurements (steps/stepsPerMeasurement)
 
@@ -654,7 +655,8 @@ double measure_Hdiag(){
 	* See Eq. 24 in [arXiv:2307.06503]
 	*/
 	// return currEnergy;
-	return lattice.to_ullong();
+	// return lattice.to_ullong();
+	return calculate_Oi(lattice);
 }
 
 double measure_Hdiag2(){
@@ -879,7 +881,8 @@ static double measure_Hdiag_kint(size_t k) {
     auto lattice_backup = lattice;
     for (decltype(q) ii = 0; ii < q+1; ++ii) {
       Ei[ii] = (d->z[ii] / -beta);
-      Oi[ii] = lattice.to_ullong();
+      // Oi[ii] = lattice.to_ullong();
+      Oi[ii] = calculate_Oi(lattice);
 
       if (ii < q) {
       	ApplyOperator(Sq[ii]);
