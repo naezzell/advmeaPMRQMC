@@ -10,7 +10,7 @@ template <size_t NBITS>
 double calculate_Oi(const std::bitset<NBITS>& l) {
     static std::array<double, NBITS> coeffs = [] {
       std::mt19937 gen(0);
-      std::normal_distribution<double> dist{};
+      std::uniform_real_distribution<double> dist(-1, 1);
       std::array<double, NBITS> ret{};
       for (size_t ii = 0; ii < NBITS; ++ii) {
         ret[ii] = dist(gen);
