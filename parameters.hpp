@@ -23,10 +23,10 @@
     
 #include <cstddef>
 #define Tsteps 100000 // number of Monte-Carlo initial equilibration updates
-// #define steps 1000000 // number of Monte-Carlo updates
-#define steps 50000000 // number of Monte-Carlo updates
+#define steps 1000000 // number of Monte-Carlo updates
+// #define steps 50000000 // number of Monte-Carlo updates
 #define stepsPerMeasurement 10 // number of Monte-Carlo updates per measurement
-#define beta 7.0 // inverse temperature
+#define beta 25.0 // inverse temperature
 #define tau 0.5 //imaginary propogation time
 #define parity_cond 0 // controls parity subspace measurement 
 
@@ -72,6 +72,6 @@ static constexpr struct SPECGAP_CONFIG {
 //
 
 // #define SAVE_COMPLETED_CALCULATION   // save detailed data to "qmc_data_*.dat" when calculaiton is completed
-// #define SAVE_UNFINISHED_CALCULATION  // save calculation state to the files "qmc_data_*.dat" prior to exiting when SIGTERM signal is detected
-// #define RESUME_CALCULATION           // attempt to read data from "qmc_data_*.dat" to resume the previous calculation
+#define SAVE_UNFINISHED_CALCULATION  // save calculation state to the files "qmc_data_*.dat" prior to exiting when SIGTERM signal is detected
+#define RESUME_CALCULATION           // attempt to read data from "qmc_data_*.dat" to resume the previous calculation
 // #define HURRY_ON_SIGTERM             // break composite update on SIGTERM signal to speed up saving data; this is usually not necessary

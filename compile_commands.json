@@ -1,8 +1,8 @@
 [
   {
-    "file": "prepare.cpp",
     "arguments": [
       "/usr/bin/g++",
+      "-c",
       "-O3",
       "-std=c++23",
       "-o",
@@ -10,20 +10,22 @@
       "prepare.cpp"
     ],
     "directory": "/home/jjkao/research/advmeaPMRQMC",
-    "output": "prepare.bin"
+    "file": "/home/jjkao/research/advmeaPMRQMC/prepare.cpp",
+    "output": "/home/jjkao/research/advmeaPMRQMC/prepare.bin"
   },
   {
-    "file": "PMRQMC_mpi.cpp",
     "arguments": [
       "/usr/bin/g++",
+      "-c",
       "-O3",
       "-std=c++23",
+      "-I/usr/include/openmpi-x86_64",
       "-o",
       "PMRQMC_mpi.bin",
-      "PMRQMC_mpi.cpp",
-      "-I/usr/include"
+      "PMRQMC_mpi.cpp"
     ],
     "directory": "/home/jjkao/research/advmeaPMRQMC",
-    "output": "PMRQMC_mpi.bin"
+    "file": "/home/jjkao/research/advmeaPMRQMC/PMRQMC_mpi.cpp",
+    "output": "/home/jjkao/research/advmeaPMRQMC/PMRQMC_mpi.bin"
   }
 ]
