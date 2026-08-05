@@ -55,11 +55,11 @@ std::array<double, k> Ikj(std::span<const double> E, // Hamiltonian energies onl
     }
   }
 
-  for (size_t i = 0; i < k; ++i) {
-    double sign = (i % 2 == 0) ? -1.0 : 1.0;
-    // inner1[i] *= sign / OneOverNFac(i);
-    inner1[i] *= sign;
-  }
+  // for (size_t i = 0; i < k; ++i) {
+  //   double sign = (i % 2 == 0) ? -1.0 : 1.0;
+  //   inner1[i] *= sign / OneOverNFac(i);
+  //   inner1[i] *= sign;
+  // }
 
   return inner1;
 }
