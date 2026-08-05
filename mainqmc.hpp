@@ -2396,18 +2396,32 @@ double compute_derived_observable(int n) { // we compute the derived observables
 
   const int susceptibility_start = N_derived_observables_base;                          // Index 8
   const int ratio_start          = susceptibility_start + N_specgap_susceptibilities; // Index 8 + KMAX
+
   if (n >= ratio_start) {
       size_t kk = n - ratio_start;
-      return (kk+1)* (mean_O[Nobservables + 14 + kk] - (std::pow(beta, kk + 1) / (2 << kk) / (kk+1))
+      return (mean_O[Nobservables + 14 + kk] - (beta_div2_pow_factorial[kk+1]).get_double()
       * mean_O[Nobservables + 2] * mean_O[Nobservables + 2]) /
-             (mean_O[Nobservables + 14 + kk+1] - (std::pow(beta, kk + 2) / (4 << kk) / (kk+2))
+             (mean_O[Nobservables + 14 + kk+1] - (beta_div2_pow_factorial[kk+1].get_double())
       * mean_O[Nobservables + 2] * mean_O[Nobservables + 2]);
   } 
   else if (n >= susceptibility_start) {
       size_t kk = n - susceptibility_start;
-      return mean_O[Nobservables + 14 + kk] - (std::pow(beta, kk + 1) / (2 << kk) / (kk+1))
+      return mean_O[Nobservables + 14 + kk] - (beta_div2_pow_factorial[kk+1]).get_double()
       * mean_O[Nobservables + 2] * mean_O[Nobservables + 2];
   }  
+
+  // if (n >= ratio_start) {
+  //     size_t kk = n - ratio_start;
+  //     return (kk+1)* (mean_O[Nobservables + 14 + kk] - (std::pow(beta, kk + 1) / (2 << kk) / (kk+1))
+  //     * mean_O[Nobservables + 2] * mean_O[Nobservables + 2]) /
+  //            (mean_O[Nobservables + 14 + kk+1] - (std::pow(beta, kk + 2) / (4 << kk) / (kk+2))
+  //     * mean_O[Nobservables + 2] * mean_O[Nobservables + 2]);
+  // } 
+  // else if (n >= susceptibility_start) {
+  //     size_t kk = n - susceptibility_start;
+  //     return mean_O[Nobservables + 14 + kk] - (std::pow(beta, kk + 1) / (2 << kk) / (kk+1))
+  //     * mean_O[Nobservables + 2] * mean_O[Nobservables + 2];
+  // }  
 
   double R = 0;
   switch (n) {
