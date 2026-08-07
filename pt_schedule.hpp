@@ -13,6 +13,9 @@
 
 struct PMRTemperatures {
 	std::vector<double> beta;
+	// Legacy beta-only schedules use gamma=1.0.  QCPT schedules populate
+	// this vector explicitly, keeping the old interface source-compatible.
+	std::vector<double> gamma;
 	std::vector<double> tau;
 };
 
@@ -75,10 +78,66 @@ inline PMRTemperatures read_pt_schedule(const std::string& filename){
 		if(!schedule.beta.empty() && beta_value <= schedule.beta.back())
 			throw std::runtime_error("schedule beta values must be strictly increasing on line " + std::to_string(line_number));
 		schedule.beta.push_back(beta_value);
+		schedule.gamma.push_back(1.0);
 		schedule.tau.push_back(tau_value);
 	}
 	if(schedule.beta.empty()) throw std::runtime_error("tempering schedule is empty");
 	return schedule;
+}
+
+// Read a QCPT path.  Unlike a beta-only ladder, beta and gamma are both
+// schedule coordinates and neither one is required to be monotone.
+inline PMRTemperatures read_qcpt_schedule(const std::string& filename){
+	std::ifstream input(filename.c_str());
+	if(!input) throw std::runtime_error("cannot open QCPT schedule: " + filename);
+	PMRTemperatures schedule;
+	std::string line;
+	unsigned long line_number = 0;
+	while(std::getline(input,line)){
+		line_number++;
+		std::string::size_type comment = line.find('#');
+		if(comment != std::string::npos) line.erase(comment);
+		std::istringstream row(line);
+		double beta_value, gamma_value, tau_value;
+		if(!(row >> beta_value)) continue;
+		if(!(row >> gamma_value))
+			throw std::runtime_error("QCPT schedule row must contain beta and gamma on line " + std::to_string(line_number));
+		if(row >> tau_value){
+			double extra;
+			if(row >> extra) throw std::runtime_error("too many columns on QCPT schedule line " + std::to_string(line_number));
+		}else{
+			row.clear(); row >> std::ws;
+			if(!row.eof()) throw std::runtime_error("QCPT schedule row must contain beta, gamma, and optional tau on line " + std::to_string(line_number));
+			tau_value = beta_value/2.0;
+		}
+		if(!std::isfinite(beta_value) || !(beta_value > 0.0))
+			throw std::runtime_error("QCPT schedule beta must be positive on line " + std::to_string(line_number));
+		if(!std::isfinite(gamma_value) || gamma_value < 0.0)
+			throw std::runtime_error("QCPT schedule gamma must be finite and nonnegative on line " + std::to_string(line_number));
+		if(!std::isfinite(tau_value) || tau_value < 0.0 || tau_value > beta_value)
+			throw std::runtime_error("QCPT schedule tau must satisfy 0 <= tau <= beta on line " + std::to_string(line_number));
+		if(!schedule.beta.empty() && beta_value == schedule.beta.back() &&
+			gamma_value == schedule.gamma.back() && tau_value == schedule.tau.back())
+			throw std::runtime_error("adjacent QCPT schedule points must be distinct on line " + std::to_string(line_number));
+		schedule.beta.push_back(beta_value);
+		schedule.gamma.push_back(gamma_value);
+		schedule.tau.push_back(tau_value);
+	}
+	if(schedule.beta.size() < 2) throw std::runtime_error("QCPT schedule must contain at least two points");
+	return schedule;
+}
+
+inline uint64_t qcpt_schedule_hash(const PMRTemperatures& schedule){
+	uint64_t hash = UINT64_C(1469598103934665603);
+	auto add = [&hash](const void* ptr, size_t bytes){
+		const unsigned char* data = static_cast<const unsigned char*>(ptr);
+		for(size_t i=0;i<bytes;i++){ hash ^= data[i]; hash *= UINT64_C(1099511628211); }
+	};
+	uint64_t count = schedule.beta.size(); add(&count,sizeof(count));
+	for(size_t i=0;i<schedule.beta.size();i++){
+		add(&schedule.beta[i],sizeof(double)); add(&schedule.gamma[i],sizeof(double)); add(&schedule.tau[i],sizeof(double));
+	}
+	return hash;
 }
 
 inline uint64_t pt_schedule_hash(const PMRTemperatures& schedule){

@@ -43,6 +43,20 @@ int main(int argc, char** argv){
 		bool rejected = false;
 		try{ read_pt_schedule(invalid_name); } catch(const std::runtime_error&){ rejected = true; }
 		assert(rejected);
+		std::string qcpt_name = std::string(argv[1]) + ".qcpt";
+		std::ofstream qcpt_file(qcpt_name.c_str());
+		qcpt_file << "0.25 1.5\n0.7 0.75 0.5\n1.6 0.25\n";
+		qcpt_file.close();
+		PMRTemperatures qcpt = read_qcpt_schedule(qcpt_name);
+		assert(qcpt.beta.size()==3 && qcpt.gamma.size()==3 && qcpt.tau.size()==3);
+		assert(qcpt.gamma[0]==1.5 && qcpt.tau[0]==0.125 && qcpt.tau[1]==0.5);
+		std::string duplicate_name = std::string(argv[1]) + ".duplicate";
+		std::ofstream duplicate_file(duplicate_name.c_str());
+		duplicate_file << "0.2 0.1\n0.2 0.1\n";
+		duplicate_file.close();
+		bool duplicate_rejected = false;
+		try{ read_qcpt_schedule(duplicate_name); } catch(const std::runtime_error&){ duplicate_rejected = true; }
+		assert(duplicate_rejected);
 	}
 	divdiff_clear_up();
 	return 0;

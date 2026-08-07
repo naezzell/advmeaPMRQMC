@@ -231,3 +231,22 @@ statistics, cold-slot observables, swap acceptance, and complete PT round
 trips in `comparison_report.json`. The short example demonstrates temperature
 mobility; longer runs are needed for a quantitative statistical-efficiency
 claim.
+
+### Beta-gamma quantum-classical parallel tempering
+
+Prepare a split Hamiltonian `H_fixed + gamma H_gamma`; equivalent Pauli terms
+remain component-wise, including terms that cancel at a particular Gamma:
+
+```text
+./prepare.bin --hamiltonian-fixed H_fixed.txt --hamiltonian-gamma H_gamma.txt [observable ...]
+make PMRQMC_qcpt_mpi.bin
+mpirun -n <path-points * independent-ladders> ./PMRQMC_qcpt_mpi.bin \
+  --schedule qcpt_schedule.txt --updates-per-exchange 10 \
+  --independent-ladders 2 --output-prefix run_name
+```
+
+QCPT schedule rows are `beta gamma [tau]`; omitted `tau` defaults to `beta/2`.
+Beta and Gamma may vary in either direction. Crossed weights rebuild every
+diagonal energy and off-diagonal matrix element from the snapshot at the
+target `(beta,gamma)`. QCPT outputs identify `slot,beta,gamma,tau` and use
+the distinct `.qcptckpt` checkpoint format.

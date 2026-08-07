@@ -115,10 +115,15 @@ std::complex<double> currD_partial[qmax], currMDk_trace[qmax], currMDl_trace[qma
 // defaults.
 double run_beta = beta;
 double run_tau = tau;
+#ifndef gamma
+#define gamma 1.0
+#endif
+double run_gamma = gamma;
 int pt_mode = 0;
 int pt_stop_requested = 0;
 #undef beta
 #undef tau
+#undef gamma
 
 #ifdef ABS_WEIGHTS
 #define REALW    std::abs
@@ -251,17 +256,37 @@ void load_QMC_data(){
 	}
 }
 
-double CalcEnergy(){ // calculate the energy <z | D_0 | z> of a given configuration of spins
+static double CalcEnergyAt(const std::bitset<N>& state, double gamma_value){
 	std::complex<double> sum = 0;
-	for(int i=0;i<D0_size;i++) sum -= double(2*(int((D0_product[i] & (~lattice)).count())%2)-1) * D0_coeff[i];
+	for(int i=0;i<D0_size;i++){
+		std::complex<double> coefficient;
+#ifdef PMR_SPLIT_HAMILTONIAN
+		coefficient = D0_fixed_coeff[i] + gamma_value * D0_gamma_coeff[i];
+#else
+		coefficient = D0_coeff[i];
+#endif
+		sum -= double(2*(int((D0_product[i] & (~state)).count())%2)-1) * coefficient;
+	}
 	return sum.real();
 }
 
-std::complex<double> calc_d(int k){ // calculate d_k = <z | D_k | z> for the current configuration of spins
+double CalcEnergy(){ return CalcEnergyAt(lattice,run_gamma); }
+
+static std::complex<double> calc_d_at(int k, const std::bitset<N>& state, double gamma_value){
 	std::complex<double> sum = 0;
-	for(int i=0;i<D_size[k];i++) sum -= double(2*(int((D_product[k][i] & (~lattice)).count())%2)-1) * D_coeff[k][i];
+	for(int i=0;i<D_size[k];i++){
+		std::complex<double> coefficient;
+#ifdef PMR_SPLIT_HAMILTONIAN
+		coefficient = D_fixed_coeff[k][i] + gamma_value * D_gamma_coeff[k][i];
+#else
+		coefficient = D_coeff[k][i];
+#endif
+		sum -= double(2*(int((D_product[k][i] & (~state)).count())%2)-1) * coefficient;
+	}
 	return sum;
 }
+
+std::complex<double> calc_d(int k){ return calc_d_at(k,lattice,run_gamma); }
 
 void ApplyOperator(int k){
 	lattice ^= P_matrix[k];
@@ -284,19 +309,37 @@ ExExFloat GetWeight(){
 	return d->divdiffs[q] * beta_pow_factorial[q] * REALW(currD);
 }
 
+double GetLogWeightAtParameters(double target_beta, double target_gamma);
+
 // Evaluate the density of the current PMR configuration at another beta.
 // The chain, its divided-difference cache, and the active factorial table are
 // left untouched.  This is the quantity needed by an exact replica-exchange
 // acceptance ratio.
 double GetLogWeightAtBeta(double target_beta){
-	if(!(target_beta > 0.0)) return -std::numeric_limits<double>::infinity();
+	return GetLogWeightAtParameters(target_beta,run_gamma);
+}
+
+// Evaluate the complete PMR path at arbitrary (beta,gamma) without touching
+// the active chain, its divided-difference cache, its current weight, or RNG.
+// The base state is z, not the mutable lattice left at the end of a live
+// update, which is essential for crossed QCPT snapshots.
+double GetLogWeightAtParameters(double target_beta, double target_gamma){
+	if(!(target_beta > 0.0) || !std::isfinite(target_gamma) || target_gamma < 0.0)
+		return -std::numeric_limits<double>::infinity();
 	static divdiff* scratch = NULL;
 	if(scratch == NULL) scratch = new divdiff(qmax+4,500);
+	std::bitset<N> state = z;
+	std::complex<double> target_product(1.0,0.0);
 	scratch->CurrentLength = 0;
-	for(int i=0;i<=q;i++) scratch->AddElement(-target_beta*Energies[i]);
+	for(int i=0;i<q;i++){
+		scratch->AddElement(-target_beta*CalcEnergyAt(state,target_gamma));
+		state ^= P_matrix[Sq[i]];
+		target_product *= calc_d_at(Sq[i],state,target_gamma);
+	}
+	scratch->AddElement(-target_beta*CalcEnergyAt(state,target_gamma));
 	ExExFloat target_factor(1.0);
 	for(int k=1;k<=q;k++) target_factor *= (-target_beta)/k;
-	return (scratch->divdiffs[q] * target_factor * REALW(currD)).log_abs();
+	return (scratch->divdiffs[q] * target_factor * REALW(target_product)).log_abs();
 }
 
 static const uint64_t PMR_SNAPSHOT_MAGIC = UINT64_C(0x504d52534e415031);
@@ -425,10 +468,11 @@ void init_rng(){
 	rng.seed(rng_seed);
 }
 
-void configure_run_parameters(double beta_value, double tau_value){
-	if(!(beta_value > 0.0) || tau_value < 0.0 || tau_value > beta_value)
-		throw std::invalid_argument("PMR beta/tau must satisfy beta > 0 and 0 <= tau <= beta");
-	run_beta = beta_value; run_tau = tau_value;
+void configure_run_parameters(double beta_value, double tau_value, double gamma_value = run_gamma){
+	if(!(beta_value > 0.0) || tau_value < 0.0 || tau_value > beta_value ||
+		!std::isfinite(gamma_value) || gamma_value < 0.0)
+		throw std::invalid_argument("PMR beta/tau/gamma must satisfy beta > 0, 0 <= tau <= beta, and gamma >= 0");
+	run_beta = beta_value; run_tau = tau_value; run_gamma = gamma_value;
 	double curr2 = 1.0; factorial[0] = curr2;
 	ExExFloat curr1, curr_tau, curr_bmt, curr_beta2;
 	beta_pow_factorial[0] = tau_pow_factorial[0] = tau_minus_beta_pow_factorial[0] = beta_div2_pow_factorial[0] = curr1;
@@ -446,36 +490,14 @@ void init_basic(){
 	zero -= zero; currWeight = GetWeight();
 }
 
-int measure_parity(){
-	// get +/- parity from 0/1 parity
-	return 1 - 2 * ((~lattice).count() % 2);
-}
-
-void init(){
-	int i,j;
-	configure_run_parameters(run_beta, run_tau);
-	zero -= zero;
-	lattice = 0; for(i=N-1;i>=0;i--) if(dice2(rng)) lattice.set(i); z = lattice; q=0;
-	//std::cout << lattice << std::endl;
-	if (parity_cond != 0) {
-		init_parity = measure_parity();
-		if (init_parity != parity_cond) {
-			 p1 = diceN(rng);
-			 lattice.flip(p1);
-			 z = lattice;
-		}
-	}
-	//std::cout << lattice << std::endl;
-	currWeight = GetWeight();
-	for(i=0;i<Ncycles;i++) cycle_len[i] = cycles[i].count();
-	cycle_min_len = 64; for(i=0;i<Ncycles;i++) cycle_min_len = min(cycle_min_len,cycle_len[i]);
-	cycle_max_len = 0; for(i=0;i<Ncycles;i++) cycle_max_len = max(cycle_max_len,cycle_len[i]);
-	for(i=0;i<Ncycles;i++) cycles_used[i] = 0;
-	for(i=0;i<Nop;i++) for(j=0;j<Ncycles;j++) if(cycles[j].test(i)) P_in_cycles[i].set(j);
-	for(i=0;i<N_all_observables;i++) in_bin_sum[i] = 0; in_bin_sum_sgn = 0;
-	for(i=0;i<N_all_observables;i++) valid_observable[i] = 0;
+// Observable availability is a compile-time property of the generated
+// Hamiltonian/parameter translation unit, but it used to be initialized only
+// by init().  Replica-exchange checkpoint restore deliberately skips init() to
+// preserve the Markov state, so keep this metadata initialization separate.
+void configure_valid_observables(){
+	for(int i=0;i<N_all_observables;i++) valid_observable[i] = 0;
 #ifdef MEASURE_CUSTOM_OBSERVABLES
-	for(i=0;i<Nobservables;i++) valid_observable[i] = 1;
+	for(int i=0;i<Nobservables;i++) valid_observable[i] = 1;
 #endif
 #ifdef MEASURE_H
 	valid_observable[Nobservables] = 1;
@@ -519,6 +541,36 @@ void init(){
 #ifdef MEASURE_PARITY
 	valid_observable[Nobservables + 13] = 1;
 #endif
+}
+
+int measure_parity(){
+	// get +/- parity from 0/1 parity
+	return 1 - 2 * ((~lattice).count() % 2);
+}
+
+void init(){
+	int i,j;
+	configure_run_parameters(run_beta, run_tau);
+	zero -= zero;
+	lattice = 0; for(i=N-1;i>=0;i--) if(dice2(rng)) lattice.set(i); z = lattice; q=0;
+	//std::cout << lattice << std::endl;
+	if (parity_cond != 0) {
+		init_parity = measure_parity();
+		if (init_parity != parity_cond) {
+			 p1 = diceN(rng);
+			 lattice.flip(p1);
+			 z = lattice;
+		}
+	}
+	//std::cout << lattice << std::endl;
+	currWeight = GetWeight();
+	for(i=0;i<Ncycles;i++) cycle_len[i] = cycles[i].count();
+	cycle_min_len = 64; for(i=0;i<Ncycles;i++) cycle_min_len = min(cycle_min_len,cycle_len[i]);
+	cycle_max_len = 0; for(i=0;i<Ncycles;i++) cycle_max_len = max(cycle_max_len,cycle_len[i]);
+	for(i=0;i<Ncycles;i++) cycles_used[i] = 0;
+	for(i=0;i<Nop;i++) for(j=0;j<Ncycles;j++) if(cycles[j].test(i)) P_in_cycles[i].set(j);
+	for(i=0;i<N_all_observables;i++) in_bin_sum[i] = 0; in_bin_sum_sgn = 0;
+	configure_valid_observables();
 }
 
 double Metropolis(ExExFloat newWeight){

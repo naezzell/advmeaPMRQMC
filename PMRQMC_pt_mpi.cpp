@@ -1,5 +1,5 @@
-// Beta-only PMR replica exchange.  Ranks own fixed temperature slots; PMR
-// configurations, rather than beta values, move between neighboring slots.
+// PMR replica exchange. The default build is beta-only; PMR_QCPT builds the
+// same machinery for an ordered path through (beta,gamma) space.
 #include <mpi.h>
 #include "mainqmc.hpp"
 #include "pt_schedule.hpp"
@@ -12,8 +12,13 @@
 #include <string>
 #include <vector>
 
+#ifdef PMR_QCPT
+static const uint32_t PT_CHECKPOINT_VERSION = 1;
+static const char PT_CHECKPOINT_MAGIC[8] = {'P','M','R','Q','C','K','1','1'};
+#else
 static const uint32_t PT_CHECKPOINT_VERSION = 3;
 static const char PT_CHECKPOINT_MAGIC[8] = {'P','M','R','P','T','C','K','1'};
+#endif
 
 struct PTCheckpointHeader {
 	char magic[8];
@@ -39,6 +44,7 @@ struct PTOptions {
 	int independent_ladders = 0;
 	int checkpoint_every = 0;
 	bool resume = false;
+	bool stop_after_checkpoint = false;
 };
 
 static void pt_signal_handler(int){ save_data_flag = 1; }
@@ -47,7 +53,7 @@ static void usage(const char* program){
 	if(mpi_rank == 0) std::cerr
 		<< "Usage: " << program << " --schedule FILE [--updates-per-exchange N]\\n"
 		<< "       [--independent-ladders N] [--output-prefix PREFIX] [--timeseries-prefix FILE]\\n"
-		<< "       [--checkpoint-every N] [--resume]\\n";
+		<< "       [--checkpoint-every N] [--resume] [--stop-after-checkpoint]\\n";
 }
 
 static bool parse_options(int argc, char** argv, PTOptions& options){
@@ -60,6 +66,7 @@ static bool parse_options(int argc, char** argv, PTOptions& options){
 		else if(arg == "--output-prefix" && i+1<argc) options.output_prefix = argv[++i];
 		else if(arg == "--timeseries-prefix" && i+1<argc) options.timeseries_prefix = argv[++i];
 		else if(arg == "--resume") options.resume = true;
+		else if(arg == "--stop-after-checkpoint") options.stop_after_checkpoint = true;
 		else return false;
 	}
 	if(options.output_prefix.empty()) options.output_prefix = "pmrqmc_pt";
@@ -67,16 +74,24 @@ static bool parse_options(int argc, char** argv, PTOptions& options){
 }
 
 static void write_timeseries_header(std::ofstream& output){
+#ifdef PMR_QCPT
+	output << "slot,beta,gamma,tau,measurement,updates,sign";
+#else
 	output << "temperature,beta,tau,measurement,updates,sign";
+#endif
 	for(int k=0;k<N_all_observables;k++)
 		output << ",obs_" << k << ",signed_obs_" << k;
 	output << ",elapsed_seconds\n";
 }
 
-static void write_timeseries_row(std::ofstream& output, int temperature, double beta_value, double tau_value,
+static void write_timeseries_row(std::ofstream& output, int temperature, double beta_value, double gamma_value, double tau_value,
 		unsigned long long measurement, uint64_t updates, const double* observables,
 		const double* signed_observables, double sign, double elapsed_seconds){
-	output << temperature << ',' << std::setprecision(17) << beta_value << ',' << tau_value << ','
+	output << temperature << ',' << std::setprecision(17) << beta_value << ',';
+#ifdef PMR_QCPT
+	output << gamma_value << ',';
+#endif
+	output << tau_value << ','
 		<< measurement << ',' << updates << ',' << sign;
 	for(int k=0;k<N_all_observables;k++)
 		output << ',' << observables[k] << ',' << signed_observables[k];
@@ -84,7 +99,11 @@ static void write_timeseries_row(std::ofstream& output, int temperature, double 
 }
 
 static std::string checkpoint_name(const std::string& prefix, int rank){
+	#ifdef PMR_QCPT
+	return prefix + ".rank" + std::to_string(rank) + ".qcptckpt";
+	#else
 	return prefix + ".rank" + std::to_string(rank) + ".ptckpt";
+	#endif
 }
 
 static bool checkpoint_exists(const std::string& name){
@@ -253,8 +272,14 @@ static void exchange_edge(MPI_Comm ladder_comm, int ladder_rank, int temperature
 	export_PMR_snapshot(current);
 	double local_beta = schedule.beta[temperature];
 	double other_beta = schedule.beta[partner];
-	double log_local = GetLogWeightAtBeta(local_beta);
-	double log_other = GetLogWeightAtBeta(other_beta);
+	double log_local, log_other;
+#ifdef PMR_QCPT
+	log_local = GetLogWeightAtParameters(local_beta,schedule.gamma[temperature]);
+	log_other = GetLogWeightAtParameters(other_beta,schedule.gamma[partner]);
+#else
+	log_local = GetLogWeightAtBeta(local_beta);
+	log_other = GetLogWeightAtBeta(other_beta);
+#endif
 	double logs[2] = {log_local,log_other}, peer_logs[2] = {0.0,0.0};
 	std::vector<uint64_t> peer(current.size());
 	double weight_start = MPI_Wtime();
@@ -295,17 +320,33 @@ static void exchange_edge(MPI_Comm ladder_comm, int ladder_rank, int temperature
 static void write_csv_outputs(const PTOptions& options, const PMRTemperatures& schedule,
 		const std::vector<double>& summaries, int world_size, int ntemperatures){
 	std::ofstream observables((options.output_prefix+"_observables.csv").c_str());
+	#ifdef PMR_QCPT
+	observables << "slot,beta,gamma,tau,kind,name,mean,stdev\n";
+	#else
 	observables << "temperature,beta,tau,kind,name,mean,stdev\n";
+	#endif
 	const size_t summary_size = 2 + 2*N_all_observables + 2*N_derived_observables;
 	for(int temperature=0;temperature<ntemperatures;temperature++){
 		const double* s = &summaries[temperature*summary_size];
-		observables << temperature << ',' << std::setprecision(17) << schedule.beta[temperature] << ',' << schedule.tau[temperature] << ",sign,sign," << s[0] << ',' << s[1] << "\n";
+		observables << temperature << ',' << std::setprecision(17) << schedule.beta[temperature] << ',';
+		#ifdef PMR_QCPT
+		observables << schedule.gamma[temperature] << ',';
+		#endif
+		observables << schedule.tau[temperature] << ",sign,sign," << s[0] << ',' << s[1] << "\n";
 		for(int k=0;k<N_all_observables;k++) if(valid_observable[k]){
-			observables << temperature << ',' << schedule.beta[temperature] << ',' << schedule.tau[temperature] << ",observable,\"" << name_of_observable(k) << "\"," << s[2+2*k] << ',' << s[2+2*k+1] << "\n";
+			observables << temperature << ',' << schedule.beta[temperature] << ',';
+			#ifdef PMR_QCPT
+			observables << schedule.gamma[temperature] << ',';
+			#endif
+			observables << schedule.tau[temperature] << ",observable,\"" << name_of_observable(k) << "\"," << s[2+2*k] << ',' << s[2+2*k+1] << "\n";
 		}
 		for(int k=0;k<N_derived_observables;k++) if(valid_derived_observable(k)){
 			const size_t offset = 2+2*N_all_observables;
-			observables << temperature << ',' << schedule.beta[temperature] << ',' << schedule.tau[temperature] << ",derived,\"" << name_of_derived_observable(k) << "\"," << s[offset+2*k] << ',' << s[offset+2*k+1] << "\n";
+			observables << temperature << ',' << schedule.beta[temperature] << ',';
+			#ifdef PMR_QCPT
+			observables << schedule.gamma[temperature] << ',';
+			#endif
+			observables << schedule.tau[temperature] << ",derived,\"" << name_of_derived_observable(k) << "\"," << s[offset+2*k] << ',' << s[offset+2*k+1] << "\n";
 		}
 	}
 }
@@ -318,7 +359,13 @@ int main(int argc, char** argv){
 	PTOptions options;
 	if(!parse_options(argc,argv,options)){ usage(argv[0]); MPI_Finalize(); return 2; }
 	PMRTemperatures schedule;
-	try{ schedule = read_pt_schedule(options.schedule); }
+	try{
+#ifdef PMR_QCPT
+		schedule = read_qcpt_schedule(options.schedule);
+#else
+		schedule = read_pt_schedule(options.schedule);
+#endif
+	}
 	catch(const std::exception& error){ if(mpi_rank==0) std::cerr << "Error: " << error.what() << '\n'; MPI_Finalize(); return 2; }
 	PMRTemperanceLayout layout;
 	try{ layout = infer_pt_layout(mpi_size,static_cast<int>(schedule.beta.size()),options.independent_ladders); }
@@ -335,7 +382,12 @@ int main(int argc, char** argv){
 		if(!timeseries_file){ std::cerr << "Cannot open timeseries output: " << options.timeseries_prefix << '\n'; MPI_Abort(MPI_COMM_WORLD,2); }
 		write_timeseries_header(timeseries_file);
 	}
-	uint64_t schedule_hash = pt_schedule_hash(schedule);
+	uint64_t schedule_hash =
+#ifdef PMR_QCPT
+		qcpt_schedule_hash(schedule);
+#else
+		pt_schedule_hash(schedule);
+#endif
 	uint64_t trajectory_id = temperature; uint32_t exchange_parity = 0; uint64_t completed_updates = 0;
 	std::vector<uint64_t> current, received;
 	std::vector<uint64_t> flow(static_cast<size_t>(ntemperatures)*ntemperatures,0);
@@ -348,7 +400,8 @@ int main(int argc, char** argv){
 		divdiff_init();
 		divdiff dd(q+4,500), ddfs(q+4,500), dd1(q+4,500), dd2(q+4,500);
 		d=&dd; dfs=&ddfs; ds1=&dd1; ds2=&dd2;
-		configure_run_parameters(schedule.beta[temperature],schedule.tau[temperature]);
+		configure_run_parameters(schedule.beta[temperature],schedule.tau[temperature],schedule.gamma[temperature]);
+		configure_valid_observables();
 		init_rng();
 		bool resume = false;
 		if(options.resume){
@@ -394,7 +447,7 @@ int main(int argc, char** argv){
 					if(mpi_rank==0){
 						for(int t=0;t<ntemperatures;t++){
 							const double* sample = &all_samples[static_cast<size_t>(t)*(2*N_all_observables+1)];
-							write_timeseries_row(timeseries_file,t,schedule.beta[t],schedule.tau[t],measurement_step+1,
+							write_timeseries_row(timeseries_file,t,schedule.beta[t],schedule.gamma[t],schedule.tau[t],measurement_step+1,
 								update_number+1,sample,sample+N_all_observables,
 								sample[2*N_all_observables],MPI_Wtime()-start_time);
 						}
@@ -415,6 +468,7 @@ int main(int argc, char** argv){
 				int local_stop = (save_data_flag || pt_stop_requested) ? 1 : 0, global_stop = 0;
 				MPI_Allreduce(&local_stop,&global_stop,1,MPI_INT,MPI_MAX,MPI_COMM_WORLD);
 				if(options.checkpoint_every > 0 && (update_number+1) % static_cast<uint64_t>(options.checkpoint_every) == 0) global_stop = 2;
+				if(options.stop_after_checkpoint && global_stop == 2) global_stop = 1;
 				if(global_stop){
 					write_checkpoint(options.output_prefix,schedule_hash,mpi_rank,ladder,temperature,update_number+1,exchange_parity,trajectory_id,flow,endpoint_visits,round_trips,endpoint_state,endpoint_origin,endpoint_seen_opposite,crossed_weight_seconds,attempts,accepts);
 					MPI_Barrier(MPI_COMM_WORLD);

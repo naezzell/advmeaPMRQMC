@@ -1,5 +1,8 @@
 import importlib.util
 import math
+import shutil
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -18,6 +21,7 @@ gap = load("pt_convergence_gap", "experiments/pt_convergence_gap.py")
 plot = load("plot_pt_convergence_gap", "experiments/plot_pt_convergence_gap.py")
 loop = load("pt_benchmark_loop", "experiments/pt_benchmark_loop.py")
 minimal = load("validate_pt_minimal", "experiments/validate_pt_minimal.py")
+qcpt = load("validate_qcpt", "experiments/validate_qcpt.py")
 
 
 class SignedTraceTest(unittest.TestCase):
@@ -69,6 +73,36 @@ class MinimalValidationTest(unittest.TestCase):
             expected = (2.0 * minimal.GAMMA / scale * math.sinh(beta * scale) /
                         (math.cosh(beta * minimal.J) + math.cosh(beta * scale)))
             self.assertAlmostEqual(minimal.exact_expectation(beta), expected, places=13)
+
+
+class QCPTValidationTest(unittest.TestCase):
+    def test_target_weight_negative_controls_are_sensitive(self):
+        controls = qcpt.negative_controls()
+        self.assertGreater(controls["q0_diagonal_freeze_disagreement"], 1e-8)
+        self.assertGreater(controls["q2_offdiagonal_reuse_disagreement"], 1e-8)
+        self.assertTrue(controls["passed"])
+
+    def test_split_exact_fixture_has_nontrivial_gamma_dependence(self):
+        low = qcpt.exact_point(0.7, 0.25)
+        high = qcpt.exact_point(0.7, 0.75)
+        self.assertGreater(abs(low["E"] - high["E"]), 1e-3)
+        self.assertGreater(abs(low["Xavg"] - high["Xavg"]), 1e-3)
+
+    def test_split_observable_prefers_fixed_supported_relation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            for name in ("prepare.cpp", "tests/qcpt_fixed.txt", "tests/qcpt_gamma.txt",
+                         "tests/qcpt_z.txt", "tests/qcpt_xsum.txt"):
+                source = ROOT / name
+                shutil.copy2(source, directory / source.name)
+            subprocess.run(["g++", "-O1", "-std=c++11", "-o", "prepare.bin", "prepare.cpp"],
+                           cwd=directory, check=True, stdout=subprocess.DEVNULL)
+            subprocess.run(["./prepare.bin", "--hamiltonian-fixed", "qcpt_fixed.txt",
+                            "--hamiltonian-gamma", "qcpt_gamma.txt", "qcpt_z.txt", "qcpt_z.txt",
+                            "qcpt_z.txt", "qcpt_z.txt", "qcpt_xsum.txt"],
+                           cwd=directory, check=True, stdout=subprocess.DEVNULL)
+            generated = (directory / "hamiltonian.hpp").read_text()
+            self.assertIn('std::bitset<Nop>("101")', generated)
 
 
 if __name__ == "__main__":
