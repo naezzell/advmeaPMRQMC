@@ -9,10 +9,11 @@
 #
 rm prepare.bin
 rm PMRQMC.bin
+rm PMRQMC_mpi.bin
+rm PMRQMC_pt_mpi.bin
 rm H.txt
 rm O.txt
 rm hamiltonian.hpp
 rm parameters.hpp
 rm job_file.sh
 rm temp_*.txt
-

@@ -124,7 +124,7 @@ int main(int argc, char* argv[]){
 		std::cout << "Error: completed calculations not found" << std::endl; exit(1);
 	}
 	std::cout << std::endl; int i, j, k, o=0; std::cout << std::setprecision(9);
-	std::cout << "Parameters: beta = " << beta << ", Tsteps = " << Tsteps << ", steps = " << steps << std::endl << std::endl;
+	std::cout << "Parameters: beta = " << run_beta << ", Tsteps = " << Tsteps << ", steps = " << steps << std::endl << std::endl;
 	std::cout << "Number of MPI processes: " << mpi_size << std::endl << std::endl;
 	if(mpi_size>4){
 		std::cout << "Testing thermalization" << std::endl << std::endl; double mean_mean, std_mean;

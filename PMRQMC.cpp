@@ -47,7 +47,7 @@ int main(int argc, char* argv[]){
 	} else{
 		init();	std::cout << "RNG seed = " << rng_seed << std::endl;
 	}
-	std::cout << "Parameters: beta = " << beta << ", Tsteps = " << Tsteps << ", steps = " << steps << std::endl;
+	std::cout << "Parameters: beta = " << run_beta << ", Tsteps = " << Tsteps << ", steps = " << steps << std::endl;
 	if(TstepsFinished){
 		if(step>0 && step<stepsPerMeasurement && measurement_step<measurements){
 			for(;step<stepsPerMeasurement;step++) update(); measure(); measurement_step++;

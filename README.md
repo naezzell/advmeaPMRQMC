@@ -66,3 +66,168 @@ As for using it in practice, each of the drivers in `experiments/` as well as `l
 
 Finally, the very in the weeds lack of sign problem detail is the result of post-selection on the empirical average sign as shown in `data_plotting_misc/plot_scripts/blackbox_2q_rotated_pre_selection.ipynb` (see [here](https://github.com/naezzell/advmeaPMRQMC/blob/main/data_plotting_misc/plot_scripts/blackbox_2q_rotated_pre_selection.ipynb) and in the supplementary section S4 and Figure S5 in <a href="https://doi.org/10.1038/s41524-025-01891-0">[1]</a>). 
 
+## Beta-only parallel tempering
+
+For a quick end-to-end correctness check, run the two-spin validation rather
+than the full benchmark sweep:
+
+```text
+make validate-pt
+```
+
+This constructs a four-temperature PT ladder, a separate fixed-beta run at
+the cold endpoint, and a direct 4x4 diagonalization using only the Python
+standard library. It checks the transverse magnetization at every PT beta,
+requires at least one complete round trip, writes `validation_report.json` in
+the printed temporary directory, and exits nonzero if a result is outside the
+larger of six reported standard errors and an absolute tolerance of 0.025.
+It also writes `convergence.csv`, `convergence_updates.svg`, and
+`convergence_time.svg`; the plots compare the sign-reweighted running means of
+the fixed-beta and PT cold-slot estimators with the exact result. PNG copies
+are generated automatically when `rsvg-convert` is available.
+
+The beta-only PMR replica-exchange executable keeps one rank at each fixed
+temperature and exchanges complete PMR configurations at synchronized update
+boundaries. Compile it after `prepare.cpp` has generated `hamiltonian.hpp`:
+
+```text
+mpicxx -O3 -std=c++11 -o PMRQMC_pt_mpi.bin PMRQMC_pt_mpi.cpp
+mpirun -n <temperatures * independent_ladders> ./PMRQMC_pt_mpi.bin \
+  --schedule tempering_schedule.txt --updates-per-exchange 10 \
+  --output-prefix run_name
+```
+
+Each schedule row is `beta tau`; a missing `tau` defaults to `beta/2`. Beta
+values must be positive and strictly increasing, and every tau must be in
+`[0,beta]`. MPI size must be an integer multiple of the number of rows;
+the quotient is the number of independent ladders. The optional
+`--independent-ladders` argument checks that layout explicitly.
+
+The run writes `run_name_observables.csv`, `run_name_swaps.csv`, and
+`run_name_flow.csv`. Observables, signs, and derived quantities are reduced
+among ranks occupying the same temperature. Swap files report edge attempts
+and accepted swaps; flow files report trajectory occupancy. `--checkpoint-every`
+creates atomic, versioned per-rank checkpoints, and `--resume` requires a
+complete set whose schedule hash and rank coordinates match the current run.
+
+`qmax` remains a compile-time capacity in `parameters.hpp`; increase it when a
+rank reaches the warning threshold. The Python helper
+`experiments/pt_driver.py` writes schedules, sets the MPI size, and exposes
+`updates_per_exchange`, independent ladders, `qmax`, and output prefixes.
+
+For a larger convergence-time comparison, use
+`experiments/pt_convergence_gap.py`. It generates a deterministic random
+3-regular transverse-field instance, runs a fixed-beta MPI baseline and a
+beta-tempered run with the same MPI size, and records the cold-slot observable
+trace in addition to the usual PT swap and flow files:
+
+```text
+python3 experiments/pt_convergence_gap.py /tmp/pt_gap --n 20 --ladders 2 \
+  --Tsteps 100000 --steps 1000000 --steps-per-measurement 100
+```
+
+On a workstation with fewer advertised MPI slots than the requested ranks,
+append `--oversubscribe`; omit it inside a scheduler allocation.
+
+The default ladder has 11 temperatures, so this command uses 22 MPI ranks for
+each run. The baseline places all ranks at the cold beta; PT uses the same 22
+ranks as two independent 11-temperature ladders. The script writes
+`comparison_report.json`, `fixed_beta/trace.csv`, and
+`beta_tempered/trace.csv`. Its convergence time is the first sustained entry
+of the cumulative observable mean into a tolerance band around the final
+cold-slot PT estimate. Repeat several seeds and inspect the traces; the
+reported ratio is an instance-dependent diagnostic, not a universal speedup.
+
+The lower-level MPI binaries also accept `--timeseries-prefix FILE`. The fixed
+MPI trace is averaged over all fixed-beta ranks; the PT trace contains one row
+per temperature and measurement, averaged over independent ladders. The
+observable used by the example is `obs_0`, the first observable passed to
+`prepare.bin`. Each trace stores both the raw estimator and its signed
+numerator. Convergence plots use the cumulative ratio
+`sum(signed_obs_0)/sum(sign)`; older traces without `signed_obs_0` must be
+regenerated and are deliberately rejected by the plotting script.
+
+Plot the resulting convergence and PT diagnostics from the command line with:
+
+```text
+python3 experiments/plot_pt_convergence_gap.py /tmp/pt_gap
+```
+
+This writes `convergence.png`, `wall_time.png`, and `pt_diagnostics.png`.
+`wall_time.png` is the practically relevant comparison: it shows both the
+running estimate and its error against elapsed wall-clock time. Install
+`matplotlib` if it is not already available; use `--show` for interactive
+display or `--output-dir DIR` to place the images elsewhere.
+
+For an exact cold-beta reference on small systems (`n <= 12`), add
+`--exact-reference` to the benchmark command, which uses dense exact
+diagonalization and writes `exact_reference.json`:
+
+```text
+python3 experiments/pt_convergence_gap.py /tmp/pt_gap_exact \
+  --model max2sat --n 10 \
+  --betas 0.1,0.3,0.7,1.5,3.0,5.0 --ladders 1 \
+  --Tsteps 100000 --steps 1000000 --steps-per-measurement 100 \
+  --exact-reference
+```
+
+Alternatively, compute the exact value after an existing benchmark with
+`python3 experiments/exact_diagonalization.py /tmp/pt_gap`, then plot it with
+`python3 experiments/plot_pt_convergence_gap.py /tmp/pt_gap --reference exact`.
+
+This implementation is PMR replica exchange over beta only. It is not
+isoenergetic cluster Monte Carlo (ICM), and it does not implement the separate
+beta-Gamma tempering algorithm. Exact reproduction of historical plots also
+requires the original unpublished instances, seeds, swap cadence, and
+hardware; the included deterministic benchmark preset records the instances
+it generates rather than claiming bit-for-bit reproduction.
+
+### Systematic correctness and ladder loop
+
+Use `experiments/pt_benchmark_loop.py` to sweep independent instance seeds,
+beta schedules, exchange cadences, and numbers of independent ladders. Every
+grid point uses the same MPI size for PT and its fixed-cold-beta control, and
+the loop writes `runs.csv`, `summary.csv`, and the complete per-run artifacts:
+
+```text
+/path/to/python-with-numpy experiments/pt_benchmark_loop.py /tmp/pt_loop \
+  --model max2sat --n 10 --seeds 11,12,13 \
+  --rng-seeds 1000,2000 \
+  --schedule coarse=0.1,0.3,0.7,1.5,3,5 \
+  --schedule geometric=0.1,0.219,0.478,1.046,2.287,5 \
+  --exchange-cadences 5,10,50 --independent-ladders 1,2 \
+  --exact-reference --require-correctness --oversubscribe
+```
+
+Treat the loop as two stages. First, run `n <= 12` with exact references and
+require both fixed beta and every PT candidate to pass the accuracy gate. A
+failure here is an implementation or estimator problem, not evidence for a
+poor ladder. Second, run larger hard instances over many seeds and rank only
+the candidates that passed stage one. Compare median time to accuracy and
+effective mixing per wall time; also inspect the worst adjacent acceptance,
+temperature flow, complete round trips, average sign, and `qmax` warnings.
+
+The fixed-beta control intentionally spends every rank at the target beta,
+whereas PT spends only one rank per ladder there. This equal-resource control
+is the relevant test of a PT speedup. A useful ladder has neither a near-zero
+acceptance bottleneck nor uniformly near-one acceptance with needless
+temperatures. Tune `beta_min` until the hot replica mixes rapidly, then move
+intermediate betas toward bottleneck edges and repeat the seed ensemble.
+
+### Tiny 3-regular MAX2SAT demonstration
+
+`experiments/small_max2sat_pt_demo.py` generates a six-variable, nine-clause
+3-regular MAX2SAT Hamiltonian with a small transverse field, then compares a
+fixed-beta run against a five-temperature beta-only PT run in an isolated
+directory:
+
+```text
+python3 experiments/small_max2sat_pt_demo.py /tmp/max2sat_pt_demo \
+  --Tsteps 200 --steps 2000
+```
+
+The script writes the clauses to `instance.json` and summarizes fixed-beta
+statistics, cold-slot observables, swap acceptance, and complete PT round
+trips in `comparison_report.json`. The short example demonstrates temperature
+mobility; longer runs are needed for a quantitative statistical-efficiency
+claim.

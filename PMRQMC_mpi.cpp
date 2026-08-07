@@ -16,12 +16,34 @@
 // L. Gupta, L. Barash, I. Hen, Calculating the divided differences of the exponential function by addition and removal of inputs, Computer Physics Communications 254, 107385 (2020)
 //
 
-#include"mainqmc.hpp"
 #include<mpi.h>
+#include"mainqmc.hpp"
 
 double elapsed_time;
 double mean_derived_O[N_derived_observables], stdev_derived_O[N_derived_observables], jackknife_O[N_derived_observables], jackknife_sum[N_derived_observables], sgn_meanJ, sgn_varianceJ;
 double sgn_mean, sgn_variance, sgn_stdev;
+std::ofstream timeseries_file;
+bool timeseries_enabled = false;
+
+static void write_timeseries_header(){
+	if(mpi_rank != 0) return;
+	timeseries_file << "measurement,updates,beta,tau,sign";
+	for(int k=0;k<N_all_observables;k++)
+		timeseries_file << ",obs_" << k << ",signed_obs_" << k;
+	timeseries_file << ",elapsed_seconds\n";
+}
+
+static void write_timeseries_row(unsigned long long measurement, unsigned long long updates,
+		const double* observables, const double* signed_observables, double sign,
+		double elapsed_seconds){
+	if(mpi_rank != 0) return;
+	timeseries_file << measurement << ',' << updates << ',' << std::setprecision(17)
+		<< run_beta << ',' << run_tau << ',' << sign;
+	for(int k=0;k<N_all_observables;k++)
+		timeseries_file << ',' << observables[k] << ',' << signed_observables[k];
+	timeseries_file << ',' << elapsed_seconds << '\n';
+}
+
 void signalHandler(int signum){	if(save_data_flag==0) save_data_flag = 1; }
 
 void compute(){
@@ -35,6 +57,24 @@ void compute(){
 	}
 	for(;measurement_step<measurements;measurement_step++){
 		for(step=0;step<stepsPerMeasurement;step++) update(); measure();
+		if(timeseries_enabled){
+			double local_signed[N_all_observables], summed[N_all_observables];
+			double summed_signed[N_all_observables], summed_sign;
+			for(int k=0;k<N_all_observables;k++)
+				local_signed[k] = last_measurement[k]*last_measurement_sgn;
+			MPI_Reduce(last_measurement,summed,N_all_observables,MPI_DOUBLE,MPI_SUM,0,MPI_COMM_WORLD);
+			MPI_Reduce(local_signed,summed_signed,N_all_observables,MPI_DOUBLE,MPI_SUM,0,MPI_COMM_WORLD);
+			MPI_Reduce(&last_measurement_sgn,&summed_sign,1,MPI_DOUBLE,MPI_SUM,0,MPI_COMM_WORLD);
+			if(mpi_rank==0){
+				for(int k=0;k<N_all_observables;k++){
+					summed[k] /= mpi_size;
+					summed_signed[k] /= mpi_size;
+				}
+				write_timeseries_row(measurement_step+1,
+					static_cast<unsigned long long>(Tsteps) + (measurement_step+1)*stepsPerMeasurement,
+					summed,summed_signed,summed_sign/mpi_size,MPI_Wtime()-start_time);
+			}
+		}
 	}
 #ifdef SAVE_COMPLETED_CALCULATION
 	save_QMC_data(0);
@@ -116,6 +156,14 @@ int main(int argc, char* argv[]){
 	MPI_Init(&argc,&argv);
 	MPI_Comm_rank(MPI_COMM_WORLD,&mpi_rank);
 	MPI_Comm_size(MPI_COMM_WORLD,&mpi_size);
+	std::string timeseries_prefix;
+	for(int arg=1;arg<argc;arg++){
+		if(std::string(argv[arg]) == "--timeseries-prefix" && arg+1<argc) timeseries_prefix = argv[++arg];
+		else{
+			if(mpi_rank==0) std::cerr << "Unknown or incomplete option: " << argv[arg] << std::endl;
+			MPI_Finalize(); return 2;
+		}
+	}
 	if(steps < Nbins*stepsPerMeasurement){
 		std::cout << "Error: steps cannot be smaller than Nbins*stepsPerMeasurement." << std::endl;
 		MPI_Finalize(); exit(1);
@@ -131,12 +179,20 @@ int main(int argc, char* argv[]){
 	d=&dd; dfs=&ddfs; ds1=&dd1; ds2=&dd2;
 	start_time = MPI_Wtime();
 	if(resume_calc){ load_QMC_data(); init_basic(); } else init();
+	if(!timeseries_prefix.empty()){
+		timeseries_enabled = true;
+		if(mpi_rank==0){
+			timeseries_file.open(timeseries_prefix.c_str());
+			if(!timeseries_file){ std::cerr << "Cannot open timeseries output: " << timeseries_prefix << std::endl; MPI_Abort(MPI_COMM_WORLD,2); }
+			write_timeseries_header();
+		}
+	}
 	MPI_Barrier(MPI_COMM_WORLD);
 	compute(); process_single_run();
 	MPI_Barrier(MPI_COMM_WORLD);
 	if(mpi_rank == 0){
 		std::cout << std::endl;
-		std::cout << "Parameters: beta = " << beta << ", Tsteps = " << Tsteps << ", steps = " << steps << std::endl << std::endl;
+		std::cout << "Parameters: beta = " << run_beta << ", Tsteps = " << Tsteps << ", steps = " << steps << std::endl << std::endl;
 		std::cout << "Number of MPI processes: " << mpi_size << std::endl;
 		std::cout << std::endl << "Output of the MPI process No. 0:" << std::endl << std::endl;
 		printout_single_run();
@@ -185,6 +241,7 @@ int main(int argc, char* argv[]){
 		delete[] gathered_mean; if(mpi_rank == 0) std::cout << std::endl;
 	}
 	if(mpi_rank == 0) std::cout << "Collecting statistics and finalizing the calculation" << std::endl << std::endl;
+	if(mpi_rank==0 && timeseries_enabled) timeseries_file.close();
 	double Rsum[N_all_observables] = {0}; sgn_mean = 0; o = 0;
 	double over_bins_sum[N_all_observables] = {0}; sgn_variance = 0;
 	double over_bins_sum_cov[N_all_observables] = {0};

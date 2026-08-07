@@ -1,0 +1,75 @@
+import importlib.util
+import math
+import unittest
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def load(name, relative_path):
+    specification = importlib.util.spec_from_file_location(name, ROOT / relative_path)
+    module = importlib.util.module_from_spec(specification)
+    specification.loader.exec_module(module)
+    return module
+
+
+gap = load("pt_convergence_gap", "experiments/pt_convergence_gap.py")
+plot = load("plot_pt_convergence_gap", "experiments/plot_pt_convergence_gap.py")
+loop = load("pt_benchmark_loop", "experiments/pt_benchmark_loop.py")
+minimal = load("validate_pt_minimal", "experiments/validate_pt_minimal.py")
+
+
+class SignedTraceTest(unittest.TestCase):
+    def test_cumulative_ratio_uses_signed_numerator(self):
+        trace = [(10, 2.0, 1.0), (20, -6.0, -1.0), (30, 4.0, 1.0)]
+        ratios = gap.cumulative_ratio_trace(trace)
+        self.assertEqual(ratios[0], (10, 2.0))
+        self.assertTrue(math.isnan(ratios[1][1]))
+        self.assertEqual(ratios[2], (30, 0.0))
+
+    def test_plot_running_mean_matches_ratio_estimator(self):
+        rows = [
+            {"updates": "10", "sign": "1", "obs_0": "2", "signed_obs_0": "2", "elapsed_seconds": "1"},
+            {"updates": "20", "sign": "-1", "obs_0": "6", "signed_obs_0": "-6", "elapsed_seconds": "2"},
+            {"updates": "30", "sign": "1", "obs_0": "4", "signed_obs_0": "4", "elapsed_seconds": "3"},
+        ]
+        _, means, _ = plot.running_mean(rows, "obs_0")
+        self.assertEqual(means[0], 2.0)
+        self.assertTrue(math.isnan(means[1]))
+        self.assertEqual(means[2], 0.0)
+
+    def test_old_unsigned_trace_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "signed_obs_0"):
+            plot.running_mean([{"updates": "1", "sign": "1", "obs_0": "2"}], "obs_0")
+
+    def test_convergence_requires_no_later_escape(self):
+        trace = [(index, value, 1.0) for index, value in
+                 enumerate((1.0, 1.0, 10.0, -5.0, -2.0, 1.0, 1.0), start=1)]
+        # The cumulative ratio first enters the band immediately, escapes at
+        # sample three, and only becomes durably accurate at sample five.
+        self.assertEqual(gap.convergence_update(trace, 1.0, 0.25, 1, 2), 5)
+
+    def test_iat_for_constant_linearized_estimator(self):
+        trace = [(index, 2.0, 1.0) for index in range(10)]
+        self.assertEqual(gap.integrated_autocorrelation_time(trace), 1.0)
+
+
+class LoopParsingTest(unittest.TestCase):
+    def test_schedule_parser(self):
+        name, betas = loop.parse_schedule("pilot ladder=0.1,0.5,2")
+        self.assertEqual(name, "pilot_ladder")
+        self.assertEqual(betas, (0.1, 0.5, 2.0))
+
+
+class MinimalValidationTest(unittest.TestCase):
+    def test_direct_diagonalization_matches_two_spin_closed_form(self):
+        scale = math.sqrt(minimal.J ** 2 + 4.0 * minimal.GAMMA ** 2)
+        for beta in minimal.BETAS:
+            expected = (2.0 * minimal.GAMMA / scale * math.sinh(beta * scale) /
+                        (math.cosh(beta * minimal.J) + math.cosh(beta * scale)))
+            self.assertAlmostEqual(minimal.exact_expectation(beta), expected, places=13)
+
+
+if __name__ == "__main__":
+    unittest.main()
