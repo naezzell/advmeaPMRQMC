@@ -134,6 +134,7 @@ int pt_stop_requested = 0;
 ExExFloat zero, currWeight; int TstepsFinished = 0;
 unsigned long long step = 0;
 unsigned long long measurement_step = 0;
+unsigned long long global_z2_moves = 0;
 
 unsigned int rng_seed;
 double meanq = 0;
@@ -165,7 +166,7 @@ void save_QMC_data(int printout = 1){
 	fout(Sq); fout(Sq_backup); fout(Sq_subseq); fout(Sq_gaps);
 	fout(Energies); fout(Energies_backup); fout(eoccupied); fout(currEnergy); fout(valid_observable);
 	fout(currD); fout(old_currD); fout(currD_partial); fout(zero); fout(currWeight); fout(step); fout(measurement_step); 
-	fout(rng_seed); fout(meanq); fout(maxq);
+	fout(rng_seed); fout(meanq); fout(maxq); fout(global_z2_moves);
 #ifdef MPI_VERSION
         elapsed = MPI_Wtime() - start_time;
 #else
@@ -212,7 +213,7 @@ void load_QMC_data(){
 		fin(Sq); fin(Sq_backup); fin(Sq_subseq); fin(Sq_gaps);
 		fin(Energies); fin(Energies_backup); fin(eoccupied); fin(currEnergy); fin(valid_observable);
 		fin(currD); fin(old_currD); fin(currD_partial); fin(zero); fin(currWeight); fin(step); fin(measurement_step); 
-		fin(rng_seed); fin(meanq); fin(maxq); fin(elapsed); if(finput.gcount()==0) elapsed = 0;
+		fin(rng_seed); fin(meanq); fin(maxq); fin(global_z2_moves); fin(elapsed); if(finput.gcount()==0) elapsed = 0;
 		if(dynamic_run_parameters){
 			uint64_t magic = 0, identity = 0;
 			fin(magic); fin(identity); fin(run_beta); fin(run_tau); fin(run_gamma);
@@ -609,6 +610,17 @@ void update(){
 		if(pt_mode){ pt_stop_requested = 1; return; }
 		save_QMC_data(); exit(0);
 	};
+#ifdef TFIM_GLOBAL_Z2_MOVE
+#ifndef TFIM_GLOBAL_Z2_MOVE_PROBABILITY
+#define TFIM_GLOBAL_Z2_MOVE_PROBABILITY 0.1
+#endif
+	// Complementing every Z-basis spin leaves standard-TFIM ZZ energies
+	// unchanged and commutes with every X permutation in the PMR string.
+	// The proposal therefore has exactly unit acceptance for that gated model.
+	if(val(rng) < TFIM_GLOBAL_Z2_MOVE_PROBABILITY){
+		lattice.flip(); z.flip(); global_z2_moves++; return;
+	}
+#endif
 	int i,m,p,r,u,oldq,cont; double oldE, oldE2, v = Nop>0 ? val(rng) : 1; ExExFloat newWeight; double Rfactor;
 	if(v < 0.8){ // composite update
 		Rfactor = 1; oldq = q; memcpy(Sq_backup,Sq,q*sizeof(int)); memcpy(cycles_used_backup,cycles_used,Ncycles*sizeof(int));

@@ -28,6 +28,7 @@ class StudyTest(unittest.TestCase):
         self.assertEqual(len(standard.lambda_terms), 9)
         self.assertIn("Z", standard.fixed_terms[0])
         self.assertIn("X", standard.lambda_terms[0])
+        self.assertIn("global_z2", standard.supported_moves)
         rotated = model.build(3, 1.0, True, "rotated_parity")
         self.assertEqual(rotated.parity, 1)
         self.assertIn("X", rotated.fixed_terms[0])
@@ -73,11 +74,14 @@ class StudyTest(unittest.TestCase):
         base["protocol"] = "advanced"
         advanced = study.parameter_text(base)
         self.assertIn("MEASURE_HOFFDIAG_FINT", advanced)
+        base["move"] = "global_z2"
+        self.assertIn("TFIM_GLOBAL_Z2_MOVE", study.parameter_text(base))
 
     def test_committed_campaign_matrices_have_unique_ids(self):
         configs = ROOT / "benchmarking_tests" / "configs"
         expected = {"desktop_smoke.json": 1, "desktop_pilot.json": 240,
-                    "historical_anchors.json": 44, "ceiling_probes.json": 20}
+                    "historical_anchors.json": 44, "ceiling_probes.json": 20,
+                    "model_move_controls.json": 96}
         for name, count in expected.items():
             config = json.loads((configs / name).read_text())
             rows = study.expand_matrix(config, "test-commit")

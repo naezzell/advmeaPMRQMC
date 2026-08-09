@@ -114,6 +114,7 @@ def write_inputs(directory, thermalization, steps, measurement_interval):
 #define COMPOSITE_UPDATE_BREAK_PROBABILITY 0.9
 #define EXACTLY_REPRODUCIBLE
 #define RNG_SEED_OFFSET 7300
+#define TFIM_GLOBAL_Z2_MOVE
 """)
 
 

@@ -59,7 +59,7 @@ static bool file_has_content(const std::string& path){
 }
 
 static void write_stream_timeseries_header(){
-	stream_timeseries_file << "stream,rank,measurement,updates,beta,tau,sign";
+	stream_timeseries_file << "stream,rank,measurement,updates,beta,tau,global_z2_moves,sign";
 	for(int k=0;k<N_all_observables;k++)
 		stream_timeseries_file << ",obs_" << k << ",signed_obs_" << k;
 	stream_timeseries_file << ",elapsed_seconds\n";
@@ -68,7 +68,8 @@ static void write_stream_timeseries_header(){
 static void write_stream_timeseries_row(unsigned long long measurement, unsigned long long updates,
 		double elapsed_seconds){
 	stream_timeseries_file << mpi_rank << ',' << mpi_rank << ',' << measurement << ',' << updates
-		<< ',' << std::setprecision(17) << run_beta << ',' << run_tau << ',' << last_measurement_sgn;
+		<< ',' << std::setprecision(17) << run_beta << ',' << run_tau << ',' << global_z2_moves
+		<< ',' << last_measurement_sgn;
 	for(int k=0;k<N_all_observables;k++)
 		stream_timeseries_file << ',' << last_measurement[k] << ',' << last_measurement[k]*last_measurement_sgn;
 	stream_timeseries_file << ',' << elapsed_seconds << '\n';
@@ -172,6 +173,7 @@ void printout_single_run(){
 	for(i=0;i<Ncycles;i++) if(!cycles_used[i]) std::cout << "Warning: cycle No. " << i << " of length " << cycle_len[i] << " was not used" << std::endl;
 	std::cout << "mean(q) = " << meanq << std::endl;
 	std::cout << "max(q) = "<< maxq << std::endl;
+	std::cout << "global Z2 moves = " << global_z2_moves << std::endl;
 	for(k=0;k<N_all_observables;k++) if(valid_observable[k]){
 		std::cout << "Observable #" << ++o << ": "<< name_of_observable(k) << std::endl;
 		std::cout << "mean(O) = " << mean_O[k] << std::endl;

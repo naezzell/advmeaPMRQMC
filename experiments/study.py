@@ -134,6 +134,7 @@ class HamiltonianSpec:
     fixed_terms: Tuple[str, ...]
     lambda_terms: Tuple[str, ...]
     observables: Mapping[str, Tuple[str, ...]]
+    supported_moves: Tuple[str, ...]
 
     def combined_terms(self) -> Tuple[str, ...]:
         combined = list(self.fixed_terms)
@@ -187,6 +188,7 @@ class SquareTFIM(ModelFamily):
             periodic=periodic, representation=representation, parity=parity,
             fixed_terms=fixed, lambda_terms=varying,
             observables={"driving_term": transverse, "transverse_magnetization": magnetization},
+            supported_moves=("none", "global_z2") if representation == "standard" else ("none",),
         )
 
 
@@ -229,7 +231,7 @@ def run_identity(specification: Mapping) -> str:
 PLAN_FIELDS = (
     "run_id", "schema_version", "source_commit", "campaign", "model", "method",
     "protocol", "L", "lambda", "beta", "beta_over_L", "periodic",
-    "representation", "parity", "seed", "tuning", "Tsteps", "steps",
+    "representation", "parity", "move", "seed", "tuning", "Tsteps", "steps",
     "steps_per_measurement", "qmax", "nbins", "schedule_name", "schedule_json",
     "max_wall_seconds", "status",
 )
@@ -242,7 +244,7 @@ def normalize_row(row: Mapping) -> Dict[str, str]:
 def make_plan_row(commit: str, campaign: str, method: str, protocol: str,
                   length: int, coupling: float, beta: float, periodic: bool,
                   representation: str, parity: int, seed: int, tuning: bool,
-                  simulation: Mapping, schedule_name: str = "") -> Dict[str, str]:
+                  simulation: Mapping, schedule_name: str = "", move: str = "none") -> Dict[str, str]:
     if method == "qcpt":
         schedule = qcpt_schedule(schedule_name, beta, coupling)
     elif method == "beta_pt":
@@ -256,7 +258,7 @@ def make_plan_row(commit: str, campaign: str, method: str, protocol: str,
         "campaign": campaign, "model": "square_tfim", "method": method,
         "protocol": protocol, "L": length, "lambda": coupling, "beta": beta,
         "periodic": periodic, "representation": representation, "parity": parity,
-        "seed": seed, "tuning": tuning,
+        "move": move, "seed": seed, "tuning": tuning,
         "Tsteps": int(simulation["Tsteps"]), "steps": int(simulation["steps"]),
         "steps_per_measurement": int(simulation["steps_per_measurement"]),
         "qmax": int(simulation["qmax"]), "nbins": int(simulation["nbins"]),
@@ -285,6 +287,7 @@ def expand_matrix(config: Mapping, commit: str) -> List[Dict[str, str]]:
         parity = int(matrix.get("parity", 0))
         tuning = bool(matrix.get("tuning", False))
         matrix_methods = matrix.get("methods", methods)
+        moves = matrix.get("moves", ["none"])
         protocols = matrix.get("protocols", ["cheap", "advanced"])
         seeds = matrix.get("seeds", config.get("seeds", [1000, 2000, 3000, 4000]))
         for length in lengths:
@@ -307,12 +310,17 @@ def expand_matrix(config: Mapping, commit: str) -> List[Dict[str, str]]:
                         for schedule_name in schedule_names:
                             for protocol in protocols:
                                 for seed in seeds:
-                                    rows.append(make_plan_row(
-                                        commit, campaign, method, protocol, int(length),
-                                        float(coupling), float(beta), periodic,
-                                        representation, parity, int(seed), tuning,
-                                        simulation, schedule_name,
-                                    ))
+                                    for move in moves:
+                                        if move == "global_z2" and (representation != "standard" or parity != 0):
+                                            raise ValueError("global_z2 is valid only for the standard unrestricted TFIM")
+                                        if move not in ("none", "global_z2"):
+                                            raise ValueError(f"unknown model-specific move: {move}")
+                                        rows.append(make_plan_row(
+                                            commit, campaign, method, protocol, int(length),
+                                            float(coupling), float(beta), periodic,
+                                            representation, parity, int(seed), tuning,
+                                            simulation, schedule_name=schedule_name, move=move,
+                                        ))
     rows.sort(key=lambda row: tuple(row[field] for field in PLAN_FIELDS[3:-1]))
     duplicate_ids = len(rows) - len({row["run_id"] for row in rows})
     if duplicate_ids:
@@ -356,6 +364,7 @@ def parameter_text(row: Mapping[str, str]) -> str:
     elif protocol != "none":
         raise ValueError(f"unknown measurement protocol: {protocol}")
     definitions = "\n".join(f"#define {macro}" for macro in macros)
+    move_definition = "#define TFIM_GLOBAL_Z2_MOVE" if row.get("move", "none") == "global_z2" else ""
     return f"""#define Tsteps {int(row['Tsteps'])}
 #define steps {int(row['steps'])}
 #define stepsPerMeasurement {int(row['steps_per_measurement'])}
@@ -370,6 +379,7 @@ def parameter_text(row: Mapping[str, str]) -> str:
 #define COMPOSITE_UPDATE_BREAK_PROBABILITY 0.9
 #define EXACTLY_REPRODUCIBLE
 #define RNG_SEED_OFFSET {int(row['seed'])}
+{move_definition}
 {definitions}
 """
 

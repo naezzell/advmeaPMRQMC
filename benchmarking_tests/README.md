@@ -30,7 +30,7 @@ to carry into the final report.
 | Q04 | QCPT schedule search | planned | pending | pending | — |
 | T05 | Critical TFIM scaling | planned | pending | pending | — |
 | S06 | SSE comparison | planned | pending | pending | — |
-| M07 | Model-specific moves | planned | pending | pending | — |
+| M07 | Model-specific moves | correctness smoke passed | this commit | `Z2-SMOKE-20260809` | Acceptance-one global Z2 move gated to standard TFIM |
 
 ## Report assembly
 

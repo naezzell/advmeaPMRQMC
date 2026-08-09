@@ -1,0 +1,24 @@
+{
+  "campaign": "tfim_model_move_controls",
+  "methods": ["current_fixed", "beta_pt"],
+  "seeds": [1300, 2300, 3300, 4300],
+  "simulation": {
+    "Tsteps": 10000,
+    "steps": 200000,
+    "steps_per_measurement": 10,
+    "qmax": 2048,
+    "nbins": 100,
+    "max_wall_seconds": 1800
+  },
+  "matrices": [
+    {
+      "L": [2, 4, 8],
+      "lambda": [1.0, 3.044],
+      "beta_over_L": [1.0],
+      "periodic": true,
+      "representation": "standard",
+      "moves": ["none", "global_z2"],
+      "protocols": ["cheap"]
+    }
+  ]
+}
