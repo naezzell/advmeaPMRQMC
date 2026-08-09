@@ -59,7 +59,7 @@ static bool file_has_content(const std::string& path){
 }
 
 static void write_stream_timeseries_header(){
-	stream_timeseries_file << "stream,rank,measurement,updates,beta,tau,global_z2_moves,measurement_seconds,sign";
+	stream_timeseries_file << "stream,rank,measurement,updates,beta,tau,global_z2_moves,measurement_seconds,expansion_order,sign";
 	for(int k=0;k<N_all_observables;k++)
 		stream_timeseries_file << ",obs_" << k << ",signed_obs_" << k;
 	stream_timeseries_file << ",elapsed_seconds\n";
@@ -69,7 +69,7 @@ static void write_stream_timeseries_row(unsigned long long measurement, unsigned
 		double elapsed_seconds){
 	stream_timeseries_file << mpi_rank << ',' << mpi_rank << ',' << measurement << ',' << updates
 		<< ',' << std::setprecision(17) << run_beta << ',' << run_tau << ',' << global_z2_moves << ',' << measurement_seconds
-		<< ',' << last_measurement_sgn;
+		<< ',' << q << ',' << last_measurement_sgn;
 	for(int k=0;k<N_all_observables;k++)
 		stream_timeseries_file << ',' << last_measurement[k] << ',' << last_measurement[k]*last_measurement_sgn;
 	stream_timeseries_file << ',' << elapsed_seconds << '\n';

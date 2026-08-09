@@ -28,7 +28,11 @@ covariance needed by nonlinear heat-capacity and gap estimators.
 - Independently require a dyadic blocking-error plateau with at least 50
   blocks.
 - On multiple streams, require split rank-normalized R-hat at most 1.01 and an
-  early/late mean difference below two pooled standard errors.
+  early/late mean difference below two pooled standard errors for the raw
+  signed energy numerator, raw signed driving-term numerator, sign, and (trace
+  schema 3 onward) instantaneous expansion order. Keep the centered
+  signed-ratio linearization for IAT estimation, where its influence-function
+  interpretation is appropriate.
 - Choose a conservative jackknife block length of ten times the largest
   accepted energy IAT and compute energy, heat capacity, energy
   susceptibility, fidelity susceptibility, and their effective-gap ratio from
@@ -63,25 +67,37 @@ for efficiency comparisons.
 The first content-addressed campaign smoke, run `aee1cea9a2fae828`, used four
 chains of a 2x2 OBC TFIM at `(Gamma,beta)=(1,0.5)`. It passed the five-SE exact
 diagonalization gates for energy density and specific heat density, but failed
-production gates without any tolerance change: R-hat was 1.027, total ESS was
-205, fewer than 50 common jackknife blocks remained, and both precision targets
-were missed. The adaptive decision therefore doubles both warmup and sampling.
-The compact record is `results/desktop_smoke_aee1cea9a2fae828.json`.
+production gates without any tolerance change: corrected component-wise R-hat
+was 1.015, total ESS was 205, fewer than 50 common jackknife blocks remained,
+and both precision targets were missed. The adaptive decision therefore doubles
+both warmup and sampling. The compact records are
+`results/desktop_smoke_aee1cea9a2fae828.json` and
+`results/adaptive_smoke_series.json`.
 
 Three automatic successor rounds reached 800 warmup and 8000 sampling updates
 per chain (`b163f97dd43e5b40`). ESS rose from 205 to 1280 and the energy-density
 estimate moved from -0.743(36) to -0.857(19), close to the exact -0.8630.
-Nevertheless, R-hat stayed above threshold (1.051 in the largest run) and the
-0.1% energy precision target remained far away, so all four runs correctly
-remain failed. See `results/adaptive_smoke_series.json`.
+The largest run's corrected R-hat was 1.001 and passed the drift gate. It still
+failed the blocking requirement and 0.1% energy precision target, so all four
+runs remain failed for defensible reasons. The former 1.027--1.051 R-hat values
+are explicitly retained as superseded fields in
+`results/adaptive_smoke_series.json`.
+
+The original R-hat calculation ranked chain-by-chain centered signed-ratio
+linearizations. For a discrete PMR observable, small chain-specific centering
+offsets split otherwise identical energy mass points into chain-specific pooled
+ranks and created a false between-chain signal. Reanalysis of the 3x3 anchor
+showed conventional split R-hat near 1 and raw signed-component rank R-hat at
+most 1.0003, while the old method returned about 1.04. A regression test now
+covers identical discrete chains. Trace schema 3 also records instantaneous
+`expansion_order`, allowing the requested q convergence gate on all new runs.
 
 ## Limitations
 
 - The current analysis uses energy to choose the common block length; advanced
   observables may require a larger observable-specific block length.
-- Per-rank/per-ladder traces are required before multi-stream R-hat and drift
-  gates can be exercised across four independent production ladders. The trace
-  schema is now emitted, but the campaign-level cross-run gate is pending.
+- Existing schema-2 traces cannot retrospectively test instantaneous expansion
+  order. They still test signed energy, driving-term, and sign components.
 - Four-chain automatic extension and measurement-interval selection remain to
   be evaluated on nontrivial TFIM sizes. The runner now creates immutable
   doubled-resource successor runs and stops at the per-job or 24-hour cap.
@@ -99,6 +115,5 @@ for a performance or physics claim.
 - How stable are automated choices across independent tuning seeds?
 - Should the production block length be the maximum IAT over all requested
   observables rather than the energy IAT alone?
-- Why does rank-normalized R-hat remain above 1.01 for this small discrete
-  model even after the energy mean approaches the exact result? Compare raw,
-  folded, and bulk/tail R-hat implementations before production.
+- Should q and advanced-observable numerators be included in the conservative
+  maximum R-hat, or reported as separate diagnostic families?

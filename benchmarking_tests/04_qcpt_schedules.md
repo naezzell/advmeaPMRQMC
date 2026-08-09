@@ -30,8 +30,12 @@ Each stationary slot is analyzed as a production marginal at its own
 Reject a candidate unless it has four independent seeds, positive mean sign,
 no qmax event, converged per-slot traces, worst-edge acceptance at least 0.15,
 and at least one observed round trip across the seed ensemble. Rank survivors
-first by median endpoint ESS/core-hour and retain total sweep ESS/core-hour as
-the tie-breaker and complementary production metric. `analyze` writes
+by both target-slot and sweep-wide utility: median endpoint ESS/core-hour,
+total sweep ESS/core-hour, and coverage of the requested `(Gamma,beta)` figure
+grid remain separate columns rather than being collapsed prematurely. The
+production decision must account for the fact that beta and Gamma marginals
+are themselves desired physics data, including ground-state convergence—not
+discarded tempering overhead. `analyze` writes
 `schedule_ranking.csv/json`; a selected winner generates
 `production_plan.csv` with disjoint seeds 5100, 6100, 7100, and 8100.
 
@@ -45,7 +49,9 @@ ranked.
 ## Interpretation
 
 Schedule selection is now reproducible and explicitly values the whole
-production sweep without conflating tuning and production samples.
+production sweep without conflating tuning and production samples. QCPT is
+therefore evaluated as a reusable sweep engine as well as a mixing aid for the
+hardest coordinate.
 
 ## Limitations
 

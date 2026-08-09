@@ -340,10 +340,24 @@ def analyze_point(rows: Sequence[Mapping[str, float]], planned: Mapping[str, str
         diagnostics.append({"stream": stream, "measurements": len(values),
                             "autocorrelation": autocorrelation,
                             "blocking": plateau, "effective_samples": effective})
-    chain_values = [linearized_ratio_values(stream_rows, energy_column)
-                    for stream_rows in streams.values()]
-    rhat = split_rank_normalized_rhat(chain_values)
-    drift = drift_test(chain_values)
+    component_extractors = {
+        "energy_numerator": lambda row: float(row["signed_obs_2"]),
+        "sign": lambda row: float(row["sign"]),
+    }
+    if rows and "signed_obs_0" in rows[0]:
+        component_extractors["driving_numerator"] = lambda row: float(row["signed_obs_0"])
+    if rows and "expansion_order" in rows[0]:
+        component_extractors["expansion_order"] = lambda row: float(row["expansion_order"])
+    rhat_components, drift_components = {}, {}
+    for name, extractor in component_extractors.items():
+        component_chains = [[extractor(row) for row in stream_rows]
+                            for stream_rows in streams.values()]
+        rhat_components[name] = split_rank_normalized_rhat(component_chains)
+        drift_components[name] = drift_test(component_chains)
+    finite_rhats = finite(rhat_components.values())
+    rhat = max(finite_rhats) if finite_rhats else float("nan")
+    drift = {"valid": all(item["valid"] for item in drift_components.values()),
+             "components": drift_components}
     valid_iats = finite(item["autocorrelation"]["iat"] for item in diagnostics)
     block_length = max(1, int(math.ceil(10 * max(valid_iats)))) if valid_iats else 1
     protocol = planned["protocol"]
@@ -385,6 +399,7 @@ def analyze_point(rows: Sequence[Mapping[str, float]], planned: Mapping[str, str
         "beta_over_L": float(coordinate["beta"]) / int(planned["L"]), "seed": int(planned["seed"]),
         "tuning": planned["tuning"] == "True", "streams": len(streams),
         "rhat": rhat, "drift": drift, "diagnostics": diagnostics,
+        "rhat_components": rhat_components,
         "effective_samples": total_effective, "block_length": block_length,
         "derived": derived, "precision": precision, "convergence_pass": convergence,
         "thermalization_pass": thermalization_pass, "correlation_pass": correlation_pass,

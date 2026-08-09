@@ -129,9 +129,9 @@ static bool file_has_content(const std::string& path){
 
 static void write_stream_timeseries_header(std::ofstream& output){
 #ifdef PMR_QCPT
-	output << "stream,ladder,rank,slot,beta,gamma,tau,measurement,updates,trajectory,global_z2_moves,measurement_seconds,sign";
+	output << "stream,ladder,rank,slot,beta,gamma,tau,measurement,updates,trajectory,global_z2_moves,measurement_seconds,expansion_order,sign";
 #else
-	output << "stream,ladder,rank,temperature,beta,tau,measurement,updates,trajectory,global_z2_moves,measurement_seconds,sign";
+	output << "stream,ladder,rank,temperature,beta,tau,measurement,updates,trajectory,global_z2_moves,measurement_seconds,expansion_order,sign";
 #endif
 	for(int k=0;k<N_all_observables;k++)
 		output << ",obs_" << k << ",signed_obs_" << k;
@@ -147,7 +147,7 @@ static void write_stream_timeseries_row(std::ofstream& output, int ladder, int r
 	output << schedule.gamma[temperature] << ',';
 #endif
 	output << schedule.tau[temperature] << ',' << measurement << ',' << updates << ','
-		<< trajectory_id << ',' << global_z2_moves << ',' << measurement_seconds << ',' << last_measurement_sgn;
+		<< trajectory_id << ',' << global_z2_moves << ',' << measurement_seconds << ',' << q << ',' << last_measurement_sgn;
 	for(int k=0;k<N_all_observables;k++)
 		output << ',' << last_measurement[k] << ',' << last_measurement[k]*last_measurement_sgn;
 	output << ',' << elapsed_seconds << '\n';

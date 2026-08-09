@@ -39,6 +39,21 @@ class StudyStatsTest(unittest.TestCase):
         self.assertLess(stats.split_rank_normalized_rhat(good), 1.01)
         self.assertGreater(stats.split_rank_normalized_rhat(bad), 1.05)
 
+    def test_rank_rhat_handles_identical_discrete_chains(self):
+        chains = [[-1.0, -1.0, 1.0, 1.0] * 100 for _ in range(4)]
+        self.assertLess(stats.split_rank_normalized_rhat(chains), 1.01)
+        self.assertGreater(stats.split_rank_normalized_rhat(chains), 0.99)
+
+    def test_discrete_ratio_centering_is_not_used_for_rhat(self):
+        chains = []
+        for seed in range(4):
+            rng = random.Random(seed)
+            chains.append([rng.choice([-12.0, -10.0, -8.0, -6.0]) for _ in range(200)])
+        centered = [[value - sum(chain) / len(chain) for value in chain]
+                    for chain in chains]
+        self.assertLess(stats.split_rank_normalized_rhat(chains), 1.01)
+        self.assertGreater(stats.split_rank_normalized_rhat(centered), 1.03)
+
     def test_joint_jackknife_derived_observables(self):
         rows = []
         for index in range(1000):

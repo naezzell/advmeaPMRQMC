@@ -33,7 +33,7 @@ from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 SCHEMA_VERSION = 1
-TRACE_SCHEMA_VERSION = 2
+TRACE_SCHEMA_VERSION = 3
 LARGE_ARTIFACT_BYTES = 5 * 1024 * 1024
 SOURCE_FILES = (
     "prepare.cpp", "mainqmc.hpp", "divdiff.hpp", "pt_schedule.hpp",
