@@ -78,7 +78,8 @@ def execute(stage, binary, schedule, prefix, args, qcpt, resume=False,
     return "interrupted"
 
 
-def comparable_csv(path, ignored=("elapsed_seconds", "crossed_weight_seconds")):
+def comparable_csv(path, ignored=("elapsed_seconds", "crossed_weight_seconds",
+                                  "measurement_seconds")):
     rows = read_csv(path)
     for row in rows:
         for key in ignored:

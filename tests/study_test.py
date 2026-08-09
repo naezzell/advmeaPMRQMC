@@ -75,6 +75,12 @@ class StudyTest(unittest.TestCase):
         base["protocol"] = "advanced"
         advanced = study.parameter_text(base)
         self.assertIn("MEASURE_HOFFDIAG_FINT", advanced)
+        base["protocol"] = "advanced_slow"
+        self.assertIn("USE_SLOW_FS_ESTIMATOR", study.parameter_text(base))
+        base["protocol"] = "es_only"
+        self.assertNotIn("MEASURE_HOFFDIAG_FINT", study.parameter_text(base))
+        base["protocol"] = "fs_only"
+        self.assertNotIn("MEASURE_HOFFDIAG_EINT", study.parameter_text(base))
         base["move"] = "global_z2"
         self.assertIn("TFIM_GLOBAL_Z2_MOVE", study.parameter_text(base))
 
@@ -82,7 +88,7 @@ class StudyTest(unittest.TestCase):
         configs = ROOT / "benchmarking_tests" / "configs"
         expected = {"desktop_smoke.json": 1, "desktop_pilot.json": 264,
                     "historical_anchors.json": 44, "ceiling_probes.json": 20,
-                    "model_move_controls.json": 96}
+                    "model_move_controls.json": 96, "estimator_microbenchmark.json": 48}
         for name, count in expected.items():
             config = json.loads((configs / name).read_text())
             rows = study.expand_matrix(config, "test-commit")

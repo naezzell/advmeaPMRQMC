@@ -33,7 +33,7 @@ from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 SCHEMA_VERSION = 1
-TRACE_SCHEMA_VERSION = 1
+TRACE_SCHEMA_VERSION = 2
 LARGE_ARTIFACT_BYTES = 5 * 1024 * 1024
 SOURCE_FILES = (
     "prepare.cpp", "mainqmc.hpp", "divdiff.hpp", "pt_schedule.hpp",
@@ -357,6 +357,16 @@ def parameter_text(row: Mapping[str, str]) -> str:
     elif protocol == "advanced":
         macros = ["MEASURE_H", "MEASURE_H2", "MEASURE_HOFFDIAG",
                   "MEASURE_HOFFDIAG_EINT", "MEASURE_HOFFDIAG_FINT"]
+    elif protocol == "advanced_slow":
+        macros = ["MEASURE_H", "MEASURE_H2", "MEASURE_HOFFDIAG",
+                  "MEASURE_HOFFDIAG_EINT", "MEASURE_HOFFDIAG_FINT",
+                  "USE_SLOW_FS_ESTIMATOR"]
+    elif protocol == "es_only":
+        macros = ["MEASURE_H", "MEASURE_H2", "MEASURE_HOFFDIAG",
+                  "MEASURE_HOFFDIAG_EINT"]
+    elif protocol == "fs_only":
+        macros = ["MEASURE_H", "MEASURE_H2", "MEASURE_HOFFDIAG",
+                  "MEASURE_HOFFDIAG_FINT"]
     elif protocol == "all":
         macros = ["MEASURE_H", "MEASURE_H2", "MEASURE_HDIAG", "MEASURE_HDIAG_EINT",
                   "MEASURE_HDIAG_FINT", "MEASURE_HOFFDIAG", "MEASURE_HOFFDIAG_EINT",

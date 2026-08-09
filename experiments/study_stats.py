@@ -346,15 +346,22 @@ def analyze_point(rows: Sequence[Mapping[str, float]], planned: Mapping[str, str
     drift = drift_test(chain_values)
     valid_iats = finite(item["autocorrelation"]["iat"] for item in diagnostics)
     block_length = max(1, int(math.ceil(10 * max(valid_iats)))) if valid_iats else 1
-    requested_columns = (["obs_2", "obs_3"] if planned["protocol"] == "cheap" else
-                         ["obs_2", "obs_3", "obs_6", "obs_13", "obs_14"])
+    protocol = planned["protocol"]
+    requested_columns = {
+        "none": [], "cheap": ["obs_2", "obs_3"],
+        "es_only": ["obs_2", "obs_3", "obs_6", "obs_13"],
+        "fs_only": ["obs_2", "obs_3", "obs_6", "obs_14"],
+    }.get(protocol, ["obs_2", "obs_3", "obs_6", "obs_13", "obs_14"])
     derived = joint_block_jackknife(rows, float(coordinate["beta"]), int(planned["L"]) ** 2,
                                     block_length, requested_columns)
-    protocol_quantities = (["energy_density", "specific_heat_density"]
-                           if planned["protocol"] == "cheap" else
-                           ["energy_density", "specific_heat_density",
-                            "energy_susceptibility_density", "fidelity_susceptibility_density",
-                            "effective_gap"])
+    protocol_quantities = {
+        "none": [],
+        "cheap": ["energy_density", "specific_heat_density"],
+        "es_only": ["energy_density", "specific_heat_density", "energy_susceptibility_density"],
+        "fs_only": ["energy_density", "specific_heat_density", "fidelity_susceptibility_density"],
+    }.get(protocol, ["energy_density", "specific_heat_density",
+                     "energy_susceptibility_density", "fidelity_susceptibility_density",
+                     "effective_gap"])
     precision = {name: relative_error(derived[name]) <= PRECISION_TARGETS[name]
                  for name in protocol_quantities}
     streams_sufficient = len(streams) >= 2
@@ -364,10 +371,13 @@ def analyze_point(rows: Sequence[Mapping[str, float]], planned: Mapping[str, str
                         all(item["blocking"]["valid"] for item in diagnostics) and
                         derived["energy"]["blocks"] >= 50)
     convergence = thermalization_pass and correlation_pass
-    analysis_pass = (summary.get("status") == "complete" and convergence and
+    analysis_pass = (protocol != "none" and summary.get("status") == "complete" and convergence and
                      total_effective >= 400 and all(precision.values()))
     wall = float(summary.get("timings", {}).get("simulation", float("nan")))
     ranks = 4
+    measurement_core_seconds = sum(
+        max((float(row.get("measurement_seconds", 0.0)) for row in stream_rows), default=0.0)
+        for stream_rows in streams.values())
     return {
         **coordinate, "run_id": planned["run_id"], "status": "analyzed", "method": planned["method"],
         "protocol": planned["protocol"], "L": int(planned["L"]),
@@ -383,6 +393,9 @@ def analyze_point(rows: Sequence[Mapping[str, float]], planned: Mapping[str, str
         "ess_per_core_hour": total_effective / (wall * ranks / 3600.0)
         if math.isfinite(wall) and wall > 0 else float("nan"),
         "mean_sign": mean([float(row["sign"]) for row in rows]),
+        "measurement_core_seconds": measurement_core_seconds,
+        "measurement_core_fraction": measurement_core_seconds / (wall * ranks)
+        if math.isfinite(wall) and wall > 0 else float("nan"),
     }
 
 
@@ -391,7 +404,8 @@ def tempering_metadata(run_directory: Path) -> Dict:
     flow_path = run_directory / "tempered_flow.csv"
     result = {"worst_edge_acceptance": float("nan"), "round_trips": 0,
               "qmax_achieved": False, "mean_q": float("nan"),
-              "crossed_weight_seconds": float("nan")}
+              "crossed_weight_seconds": float("nan"),
+              "measurement_core_seconds": float("nan")}
     if swaps_path.exists():
         with swaps_path.open(newline="") as stream:
             acceptances = [float(row["acceptance"]) for row in csv.DictReader(stream)]
@@ -405,6 +419,7 @@ def tempering_metadata(run_directory: Path) -> Dict:
                 "qmax_achieved": bool(int(rows[0]["qmax_achieved"])),
                 "mean_q": float(rows[0]["mean_q"]),
                 "crossed_weight_seconds": float(rows[0]["crossed_weight_seconds"]),
+                "measurement_core_seconds": float(rows[0].get("measurement_seconds", "nan")),
             })
     return result
 
@@ -483,7 +498,8 @@ def flatten_analysis(result: Mapping) -> List[Dict]:
         row = {key: point.get(key) for key in
                ("run_id", "status", "method", "protocol", "L", "lambda", "beta",
                 "beta_over_L", "point", "slot", "temperature", "seed", "tuning",
-                "schedule_name", "move", "mean_sign",
+                "schedule_name", "move", "mean_sign", "measurement_core_seconds",
+                "measurement_core_fraction",
                 "streams", "rhat", "effective_samples", "convergence_pass",
                 "analysis_pass", "wall_seconds", "core_hours", "ess_per_core_hour")}
         for name, estimate in point.get("derived", {}).items():
