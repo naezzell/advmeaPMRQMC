@@ -229,6 +229,21 @@ class StudyStatsTest(unittest.TestCase):
         self.assertEqual(int(extensions[0]["steps"]), 200)
         self.assertEqual(decisions[0]["status"], "planned")
 
+    def test_campaign_plan_registry_recovers_adaptive_manifest(self):
+        simulation = {"Tsteps": 20, "steps": 200, "steps_per_measurement": 1,
+                      "qmax": 64, "nbins": 10, "max_wall_seconds": 100}
+        adaptive = stats.study.make_plan_row(
+            "abc", "adaptive", "qcpt", "cheap", 2, 1.0, 2.0, True,
+            "standard", 0, 1100, True, simulation, schedule_name="pure_beta")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            stats.study.write_csv(root / "plan.csv", [])
+            run = root / "runs" / adaptive["run_id"]
+            run.mkdir(parents=True)
+            stats.study.write_json(run / "manifest.json", {"planned": adaptive})
+            recovered = stats.campaign_plan_rows(root)
+        self.assertEqual([row["run_id"] for row in recovered], [adaptive["run_id"]])
+
     def test_analysis_fingerprint_tracks_trace_and_analyzer_inputs(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

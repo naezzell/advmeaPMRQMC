@@ -711,7 +711,7 @@ def selected_production_rows(root: Path, ranking: Sequence[Mapping]) -> List[Dic
     selected = [row for row in ranking if row.get("selected")]
     if not selected or not (root / "plan.csv").exists():
         return []
-    plan = study.read_csv(root / "plan.csv")
+    plan = campaign_plan_rows(root)
     campaign_manifest = json.loads((root / "campaign_manifest.json").read_text())
     production_seeds = campaign_manifest["config"].get(
         "production_seeds", [5100, 6100, 7100, 8100]
@@ -751,7 +751,7 @@ def adaptive_extension_rows(root: Path, analyses: Sequence[Mapping]) -> Tuple[Li
     """Create immutable successor runs; never weaken a failed statistical gate."""
     if not (root / "plan.csv").exists():
         return [], []
-    plan = {row["run_id"]: row for row in study.read_csv(root / "plan.csv")}
+    plan = {row["run_id"]: row for row in campaign_plan_rows(root)}
     extensions, decisions = [], []
     for result in analyses:
         template = plan.get(result.get("run_id"))
@@ -799,6 +799,19 @@ def adaptive_extension_rows(root: Path, analyses: Sequence[Mapping]) -> Tuple[Li
         decisions.append(decision)
     unique = {row["run_id"]: row for row in extensions}
     return sorted(unique.values(), key=lambda row: row["run_id"]), decisions
+
+
+def campaign_plan_rows(root: Path) -> List[Dict[str, str]]:
+    """Recover every immutable row from the root plan and archived manifests."""
+    rows = study.read_csv(root / "plan.csv") if (root / "plan.csv").exists() else []
+    runs = root / "runs"
+    if runs.exists():
+        for manifest_path in sorted(runs.glob("*/manifest.json")):
+            manifest = json.loads(manifest_path.read_text())
+            if "planned" in manifest:
+                rows.append(study.normalize_row(manifest["planned"]))
+    unique = {row["run_id"]: row for row in rows}
+    return sorted(unique.values(), key=lambda row: row["run_id"])
 
 
 def beta_convergence(rows: Sequence[Mapping], quantity: str) -> List[Dict]:

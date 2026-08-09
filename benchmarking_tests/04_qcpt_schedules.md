@@ -80,6 +80,10 @@ hardest coordinate.
   and measurement interval are part of candidate identity and the selected
   production template. A failed short parent therefore cannot poison its
   successful extension or cause production to copy the wrong budget.
+- Executed adaptive rows are recovered from immutable run manifests, not a
+  transient `extension_plan.csv`. Production promotion and further extensions
+  therefore retain the exact successful resource level even after the next
+  extension plan is generated.
 - The classical dogleg does not yet have a Wolff move at its Gamma=0 slots.
 
 ## Report-ready Claims
