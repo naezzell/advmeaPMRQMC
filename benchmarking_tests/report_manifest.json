@@ -1,0 +1,15 @@
+{
+  "title": "QCPT efficacy and scalable PMR-QMC workflows",
+  "schema_version": 1,
+  "sections": [
+    "00_methodology.md",
+    "01_historical_reproduction.md",
+    "02_estimator_speedup.md",
+    "03_autocorrelation_automation.md",
+    "04_qcpt_schedules.md",
+    "05_tfim_scaling.md",
+    "06_sse_comparison.md",
+    "07_model_specific_moves.md"
+  ],
+  "bibliography": "references.bib"
+}
