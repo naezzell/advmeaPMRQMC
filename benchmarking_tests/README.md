@@ -27,7 +27,7 @@ to carry into the final report.
 | H01 | Historical reproduction | 3x3 and 8x8 sweeps reproduced; 4x4 cliff measured | this commit | IDs in note | All four 8x8 beta=1 Gamma points match archive; advanced precision remains limiting |
 | E02 | Fast FS estimator | L=2 speedup established | this commit | 8 paired run IDs in note | 4.69x measurement and 3.87x wall median speedup |
 | A03 | Autocorrelation automation | diagnostics corrected and cached | this commit | smoke IDs in note; cache uses 12 control runs | Cached repeat 1.06 s vs 263.04 s uncached; summary byte-identical |
-| Q04 | QCPT schedule search | sweep-aware selector implemented | this commit | pending | Winner can optimize declared figure-grid ESS, coverage, or endpoint ESS |
+| Q04 | QCPT schedule search | L=2 ranking and production complete | this commit | 24 retained IDs in note/result | Pure-beta wins grid utility; no resolved endpoint advantage over diagonals |
 | T05 | Critical TFIM scaling | planned | pending | pending | — |
 | S06 | SSE comparison | adapter ready, image build blocked | this commit | pending | ALPS normalization and source/base pins tested |
 | M07 | Model-specific moves | four-seed pilot measured | this commit | 12 matched IDs in note | Z-magnetization ESS/core-hour 4.65x, but production gate fails; standard basis strongly favored |

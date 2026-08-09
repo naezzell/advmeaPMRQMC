@@ -59,7 +59,28 @@ schedule when it provides more ESS on the requested figure grid; and only
 coordinates in that grid contribute to objective ESS and coverage. The
 264-row desktop plan is byte-for-byte deterministic across repeated planning
 (SHA-256 `510bb9daedd50e8349f99fa17fd5b5b5ec696f60d0c913ec42f15b406e1e7f05`).
-No TFIM schedule has yet been empirically ranked.
+The exact L=2 campaign then completed an adaptive two-level search. At 50,000
+production updates every schedule had at least one blocking failure. At
+100,000, pure-beta and all three diagonal paths pass sign, qmax, transport, and
+per-slot convergence gates; the classical dogleg is rejected by its 0.095
+worst-edge acceptance despite many round trips. All 80 tuning marginals agree
+with exact diagonalization.
+
+Pure-beta is selected for the declared sweep objective. Its median objective
+ESS/core-hour is 1.519 million with 50% grid coverage. The diagonal schedules
+cover 25% and yield 0.609--0.714 million objective ESS/core-hour. Matched-seed
+pure/diagonal objective ratios are 2.25--2.69, with every bootstrap 95%
+interval excluding one. This is predominantly a useful-marginal coverage gain:
+at the target endpoint, pure/diagonal median ratios are 0.95--1.06 and every
+interval includes one.
+
+The dogleg also covers 50% and has 1.264 million objective ESS/core-hour, so its
+pure/dogleg interval includes one; it loses on the preregistered acceptance
+gate. Four disjoint pure-beta production runs (`1ce2cac962450bc5`,
+`70f35b98e79a5a51`, `f0e1b9776116201c`, `fcb005adea87281d`) pass exact and
+all per-slot convergence gates but miss the strict precision target. Compact
+results and 208,238,609 bytes of raw-trace checksums are recorded in
+`results/qcpt_schedule_smoke.json`.
 
 ## Interpretation
 
@@ -67,6 +88,12 @@ Schedule selection is now reproducible and explicitly values the whole
 production sweep without conflating tuning and production samples. QCPT is
 therefore evaluated as a reusable sweep engine as well as a mixing aid for the
 hardest coordinate.
+
+This first empirical ranking supports the user's sweep interpretation of QCPT:
+pure-beta wins because every slot lies on the requested beta curve, not because
+it is demonstrably faster at the hardest endpoint. Mixed paths should be built
+from desired figure coordinates if their intermediate marginals are expected
+to pay for crossed-weight overhead.
 
 ## Limitations
 
@@ -89,10 +116,20 @@ hardest coordinate.
   do not reject promotion merely because analysis/ranking code was committed
   after tuning.
 - The classical dogleg does not yet have a Wolff move at its Gamma=0 slots.
+- Each run contains one four-slot ladder; the four tuning seeds are ranked as
+  an ensemble, but a joint cross-seed R-hat is not yet computed.
+- Crossed-weight evaluation is about one quarter of four-core simulator time in
+  this smoke, while per-run compilation dominates end-to-end campaign time.
+- This compares QCPT schedules with one another, not yet QCPT against matched
+  fixed-PMR and beta-only controls.
 
 ## Report-ready Claims
 
-None; the selection mechanics are tested but schedule performance is unmeasured.
+At L=2, Gamma=1, beta=2, all five QCPT schedule families produce exact
+stationary marginals. Pure-beta is the sweep-objective winner after the dogleg
+fails the acceptance gate; its advantage over diagonal paths is resolved for
+requested-grid ESS/core-hour but not for hardest-endpoint ESS/core-hour. This
+is a workflow/schedule result, not evidence of critical-point acceleration.
 
 ## Open Questions
 
