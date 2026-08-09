@@ -24,7 +24,7 @@ to carry into the final report.
 | ID | Topic | Status | Commit | Run IDs | Headline result |
 |---|---|---|---|---|---|
 | M00 | Methodology and provenance | ready | `b44818d` | n/a | Protocol and evidence schema defined |
-| H01 | Historical reproduction | 3x3 exact anchor measured | this commit | `03a568f16f6da728`, `356e83aa7b480102`, `41117f9436c4b660`, `24ee3feebb20a41d` | Energy/Cv exact gates pass; ES/FS need more precision |
+| H01 | Historical reproduction | 3x3 archive reproduced | this commit | `03a568f16f6da728`, `356e83aa7b480102`, `41117f9436c4b660`, `24ee3feebb20a41d` | Four shared observables agree with archive within 0.55 combined SE |
 | E02 | Fast FS estimator | L=2 speedup established | this commit | 8 paired run IDs in note | 4.69x measurement and 3.87x wall median speedup |
 | A03 | Autocorrelation automation | discrete R-hat corrected | this commit | `aee1cea9a2fae828`, `9d3f3c6f3c092919`, `a40a5b4376d6c288`, `b163f97dd43e5b40` | Largest smoke R-hat is 1.001; blocking/precision still fail |
 | Q04 | QCPT schedule search | sweep-aware selector implemented | this commit | pending | Winner can optimize declared figure-grid ESS, coverage, or endpoint ESS |
