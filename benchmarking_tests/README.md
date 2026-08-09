@@ -25,7 +25,7 @@ to carry into the final report.
 |---|---|---|---|---|---|
 | M00 | Methodology and provenance | ready | `b44818d` | n/a | Protocol and evidence schema defined |
 | H01 | Historical reproduction | planned | pending | pending | — |
-| E02 | Fast FS estimator | instrumented, smoke pending | this commit | pending | Fast/reference protocols expose measurement core-time |
+| E02 | Fast FS estimator | L=2 speedup established | this commit | 8 paired run IDs in note | 4.69x measurement and 3.87x wall median speedup |
 | A03 | Autocorrelation automation | four adaptive rounds inconclusive | this commit | `aee1cea9a2fae828`, `9d3f3c6f3c092919`, `a40a5b4376d6c288`, `b163f97dd43e5b40` | ESS improved 6.2x; R-hat and precision still failed |
 | Q04 | QCPT schedule search | selector implemented | this commit | pending | Four-seed transport gates and separate production seeds |
 | T05 | Critical TFIM scaling | planned | pending | pending | — |
