@@ -454,6 +454,23 @@ def run_logged(command: Sequence[str], directory: Path, log_name: str,
     return time.perf_counter() - started
 
 
+def new_run_provenance_error(planned_commit: str, current_commit: str,
+                             dirty: bool) -> Optional[str]:
+    if planned_commit != current_commit:
+        return f"plan source {planned_commit} does not match HEAD {current_commit}; re-plan"
+    if dirty:
+        return "refusing empirical execution from a dirty worktree; commit or stash and re-plan"
+    return None
+
+
+def staged_input_hashes(run_directory: Path) -> Dict[str, str]:
+    names = list(SOURCE_FILES) + ["parameters.hpp", "model.json", "H.txt", "H_fixed.txt",
+                                  "H_gamma.txt", "driving_term.txt",
+                                  "transverse_magnetization.txt", "schedule.txt", "commands.json"]
+    return {name: sha256_file(run_directory / name) for name in names
+            if (run_directory / name).exists()}
+
+
 def execute_row(row: Mapping[str, str], campaign_root: Path, resume: bool,
                 oversubscribe: bool, dry_run: bool) -> Dict:
     run_directory = campaign_root / "runs" / row["run_id"]
@@ -462,10 +479,12 @@ def execute_row(row: Mapping[str, str], campaign_root: Path, resume: bool,
         existing = json.loads(summary_path.read_text())
         if existing.get("status") == "complete":
             return existing
-    if source_commit() != row["source_commit"]:
-        raise RuntimeError(
-            f"run {row['run_id']} was planned at {row['source_commit']} but HEAD is {source_commit()}; re-plan"
-        )
+    current_commit = source_commit()
+    dirty = git_is_dirty()
+    provenance_error = new_run_provenance_error(
+        row["source_commit"], current_commit, dirty)
+    if provenance_error:
+        raise RuntimeError(f"run {row['run_id']}: {provenance_error}")
     run_directory.mkdir(parents=True, exist_ok=True)
     family = MODEL_FAMILIES[row["model"]]
     spec = family.build(int(row["L"]), float(row["lambda"]), row["periodic"] == "True",
@@ -473,8 +492,8 @@ def execute_row(row: Mapping[str, str], campaign_root: Path, resume: bool,
     schedule = json.loads(row["schedule_json"])
     manifest = {
         "schema_version": SCHEMA_VERSION, "trace_schema_version": TRACE_SCHEMA_VERSION,
-        "run_id": row["run_id"], "planned": dict(row), "source_commit": source_commit(),
-        "dirty_worktree": git_is_dirty(), "environment": command_environment(),
+        "run_id": row["run_id"], "planned": dict(row), "source_commit": current_commit,
+        "dirty_worktree": dirty, "environment": command_environment(),
         "archive_root": str(campaign_root), "created_unix": time.time(),
     }
     write_json(run_directory / "manifest.json", manifest)
@@ -519,6 +538,8 @@ def execute_row(row: Mapping[str, str], campaign_root: Path, resume: bool,
         "launch": launch,
     }
     write_json(run_directory / "commands.json", commands)
+    manifest["staged_input_sha256"] = staged_input_hashes(run_directory)
+    write_json(run_directory / "manifest.json", manifest)
     if dry_run:
         return {"run_id": row["run_id"], "status": "dry_run", "run_directory": str(run_directory)}
     summary = {"run_id": row["run_id"], "status": "running", "run_directory": str(run_directory)}

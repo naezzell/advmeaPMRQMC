@@ -96,6 +96,11 @@ class StudyTest(unittest.TestCase):
             self.assertEqual(len(rows), count, name)
             self.assertEqual(len({row["run_id"] for row in rows}), count, name)
 
+    def test_new_run_provenance_rejects_stale_or_dirty_sources(self):
+        self.assertIn("re-plan", study.new_run_provenance_error("old", "new", False))
+        self.assertIn("dirty worktree", study.new_run_provenance_error("same", "same", True))
+        self.assertIsNone(study.new_run_provenance_error("same", "same", False))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -41,7 +41,11 @@ Planning and execution are separate operations.  `study.py plan` expands a
 human-readable JSON configuration into an immutable CSV whose run IDs hash the
 model, physical parameters, method, measurements, schedule, simulation budget,
 seed, and source commit.  Execution refuses a plan from a different commit.
-This prevents a resumed campaign from silently mixing implementations.
+Empirical execution also refuses a dirty worktree. Each manifest records SHA-256
+digests for the exact staged C++ sources, generated Hamiltonians, parameters,
+schedule, model metadata, and commands. These gates prevent a campaign from
+silently labeling newer local code with an older planned revision. Existing
+run archives remain resumable only while their plan/source gate is satisfied.
 
 ### Default statistical gates
 
