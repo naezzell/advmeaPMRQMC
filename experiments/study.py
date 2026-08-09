@@ -379,6 +379,9 @@ def parameter_text(row: Mapping[str, str]) -> str:
 #define COMPOSITE_UPDATE_BREAK_PROBABILITY 0.9
 #define EXACTLY_REPRODUCIBLE
 #define RNG_SEED_OFFSET {int(row['seed'])}
+#define SAVE_UNFINISHED_CALCULATION
+#define RESUME_CALCULATION
+#define HURRY_ON_SIGTERM
 {move_definition}
 {definitions}
 """
@@ -490,7 +493,11 @@ def execute_row(row: Mapping[str, str], campaign_root: Path, resume: bool,
             "--updates-per-exchange", "10", "--independent-ladders", "1",
             "--output-prefix", "tempered", "--timeseries-prefix", "trace.csv",
             "--stream-timeseries-prefix", "trace_stream",
+            "--checkpoint-every", str(max(1, min(100000, int(row["steps"]) // 10))),
         ]
+        checkpoint_suffix = ".qcptckpt" if method == "qcpt" else ".ptckpt"
+        if resume and len(list(run_directory.glob(f"tempered.rank*{checkpoint_suffix}"))) == ranks:
+            launch.append("--resume")
     else:
         raise ValueError(f"execution adapter not implemented for method {method}")
     commands = {
@@ -539,6 +546,12 @@ def run_command(args) -> None:
             raise SystemExit("unknown run IDs: " + ", ".join(sorted(missing)))
     summaries = []
     for index, row in enumerate(rows, start=1):
+        deadline = getattr(args, "deadline", None)
+        if deadline is not None:
+            remaining = deadline - time.monotonic()
+            if remaining <= float(row["max_wall_seconds"]):
+                print(f"desktop campaign budget reached with {len(rows)-index+1} runs remaining")
+                break
         print(f"[{index}/{len(rows)}] {row['run_id']} {row['method']} L={row['L']}")
         summaries.append(execute_row(row, campaign_root, args.resume,
                                      args.oversubscribe, args.dry_run))
@@ -588,13 +601,26 @@ def pilot_command(args) -> None:
     if not plan_path.exists():
         plan_args = argparse.Namespace(config=args.config, output=str(root))
         plan_command(plan_args)
+    deadline = time.monotonic() + args.budget_hours * 3600.0
     run_args = argparse.Namespace(
         plan=str(plan_path), resume=args.resume, oversubscribe=args.oversubscribe,
-        dry_run=args.dry_run, run_id=None,
+        dry_run=args.dry_run, run_id=None, deadline=deadline,
     )
     run_command(run_args)
     if not args.dry_run:
         analyze_command(argparse.Namespace(output=str(root)))
+        for _ in range(args.adaptive_rounds):
+            extension_path = root / "extension_plan.csv"
+            extensions = read_csv(extension_path) if extension_path.exists() and extension_path.stat().st_size else []
+            plan_rows = read_csv(plan_path)
+            existing = {row["run_id"] for row in plan_rows}
+            new_rows = [row for row in extensions if row["run_id"] not in existing]
+            if not new_rows or time.monotonic() >= deadline:
+                break
+            write_csv(plan_path, plan_rows + new_rows)
+            run_args.run_id = [row["run_id"] for row in new_rows]
+            run_command(run_args)
+            analyze_command(argparse.Namespace(output=str(root)))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -617,6 +643,8 @@ def build_parser() -> argparse.ArgumentParser:
     pilot.add_argument("--resume", action="store_true")
     pilot.add_argument("--oversubscribe", action="store_true")
     pilot.add_argument("--dry-run", action="store_true")
+    pilot.add_argument("--budget-hours", type=float, default=24.0)
+    pilot.add_argument("--adaptive-rounds", type=int, default=3)
     pilot.set_defaults(function=pilot_command)
     analyze = subparsers.add_parser("analyze")
     analyze.add_argument("--output", required=True)

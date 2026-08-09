@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "run_id": "aee1cea9a2fae828",
+  "simulation_source_commit": "0b6ae1e695acfb9b505738fcc646d6d24c8cfe52",
+  "analysis_commit": "commit containing this artifact",
+  "model": "2x2 OBC standard TFIM",
+  "lambda": 1.0,
+  "beta": 0.5,
+  "seeds": [1000, 1001, 1002, 1003],
+  "protocol": "cheap",
+  "updates": {"thermalization_per_chain": 100, "sampling_per_chain": 1000, "measurement_interval": 10},
+  "diagnostics": {
+    "streams": 4,
+    "rhat": 1.0273753974143471,
+    "drift_pass": true,
+    "effective_samples": 205.3211122923586,
+    "minimum_jackknife_blocks_pass": false,
+    "convergence_pass": false,
+    "precision_pass": false,
+    "analysis_pass": false
+  },
+  "estimates": {
+    "energy_density": {"mean": -0.7431123173357573, "se": 0.035538683374857535, "exact": -0.8630147352799794, "exact_gate_pass": true},
+    "specific_heat_density": {"mean": 0.29009136323059637, "se": 0.02826192904374581, "exact": 0.2998344923015842, "exact_gate_pass": true}
+  },
+  "timings_seconds": {"build_prepare": 4.8690571, "build_simulator": 5.9888098, "prepare": 0.0024321, "mpi_launch_and_simulation": 0.4764999, "simulator_reported_wall": 0.1097257},
+  "adaptive_decision": {"double_Tsteps": true, "double_steps": true, "thresholds_unchanged": true},
+  "raw_archive": {
+    "path": "benchmarking_tests/artifacts/desktop_smoke/runs/aee1cea9a2fae828",
+    "manifest_sha256": "4216d0ea6885865e3e37a1734007c5fca9476a78eac08f9b985eac0615300139",
+    "trace_sha256": [
+      "db7364ed036bacf43c4a57fd5d7116924a02ff32f854350a678e33c00477f052",
+      "c6a9ea8807ca395652e04b7919c02dba8f93598f12bd33b66086d42fa5614804",
+      "1084db24c3116dd1dcc9d48751453a5134e3203fbc4373f72035e7a0c877cbd7",
+      "fee75a726a54f2bd5028a1277d41021e2b7e00806bae730eff86060fb0813278"
+    ]
+  }
+}

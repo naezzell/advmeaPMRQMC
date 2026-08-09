@@ -231,10 +231,16 @@ def derived_from_sums(sums: Mapping[str, float], beta: float, spins: int) -> Dic
 
 
 def joint_block_jackknife(rows: Sequence[Mapping[str, float]], beta: float, spins: int,
-                          block_length: int) -> Dict[str, Dict[str, float]]:
+                          block_length: int,
+                          observable_columns: Optional[Sequence[str]] = None) -> Dict[str, Dict[str, float]]:
     required = ["obs_2", "obs_3", "obs_6", "obs_13", "obs_14"]
+    if observable_columns is not None:
+        required = [column for column in required if column in observable_columns]
     available = [column for column in required if rows and f"signed_{column}" in rows[0]]
-    blocks = block_sums(rows, available, block_length)
+    # Never let a jackknife block straddle independent chains/ladders.
+    blocks = []
+    for stream_rows in split_streams(rows).values():
+        blocks.extend(block_sums(stream_rows, available, block_length))
     total = {"sign": sum(block["sign"] for block in blocks)}
     for column in available:
         total[column] = sum(block[column] for block in blocks)
@@ -334,13 +340,16 @@ def analyze_point(rows: Sequence[Mapping[str, float]], planned: Mapping[str, str
         diagnostics.append({"stream": stream, "measurements": len(values),
                             "autocorrelation": autocorrelation,
                             "blocking": plateau, "effective_samples": effective})
-    chain_ratios = [ratio_trace(stream_rows, energy_column) for stream_rows in streams.values()]
-    rhat = split_rank_normalized_rhat(chain_ratios)
-    drift = drift_test(chain_ratios)
+    chain_values = [linearized_ratio_values(stream_rows, energy_column)
+                    for stream_rows in streams.values()]
+    rhat = split_rank_normalized_rhat(chain_values)
+    drift = drift_test(chain_values)
     valid_iats = finite(item["autocorrelation"]["iat"] for item in diagnostics)
     block_length = max(1, int(math.ceil(10 * max(valid_iats)))) if valid_iats else 1
+    requested_columns = (["obs_2", "obs_3"] if planned["protocol"] == "cheap" else
+                         ["obs_2", "obs_3", "obs_6", "obs_13", "obs_14"])
     derived = joint_block_jackknife(rows, float(coordinate["beta"]), int(planned["L"]) ** 2,
-                                    block_length)
+                                    block_length, requested_columns)
     protocol_quantities = (["energy_density", "specific_heat_density"]
                            if planned["protocol"] == "cheap" else
                            ["energy_density", "specific_heat_density",
@@ -349,9 +358,12 @@ def analyze_point(rows: Sequence[Mapping[str, float]], planned: Mapping[str, str
     precision = {name: relative_error(derived[name]) <= PRECISION_TARGETS[name]
                  for name in protocol_quantities}
     streams_sufficient = len(streams) >= 2
-    convergence = ((not streams_sufficient or (math.isfinite(rhat) and rhat <= 1.01 and drift["valid"]))
-                   and all(item["autocorrelation"]["valid"] for item in diagnostics)
-                   and all(item["blocking"]["valid"] for item in diagnostics))
+    thermalization_pass = (not streams_sufficient or
+                           (math.isfinite(rhat) and rhat <= 1.01 and drift["valid"]))
+    correlation_pass = (all(item["autocorrelation"]["valid"] for item in diagnostics) and
+                        all(item["blocking"]["valid"] for item in diagnostics) and
+                        derived["energy"]["blocks"] >= 50)
+    convergence = thermalization_pass and correlation_pass
     analysis_pass = (summary.get("status") == "complete" and convergence and
                      total_effective >= 400 and all(precision.values()))
     wall = float(summary.get("timings", {}).get("simulation", float("nan")))
@@ -365,6 +377,7 @@ def analyze_point(rows: Sequence[Mapping[str, float]], planned: Mapping[str, str
         "rhat": rhat, "drift": drift, "diagnostics": diagnostics,
         "effective_samples": total_effective, "block_length": block_length,
         "derived": derived, "precision": precision, "convergence_pass": convergence,
+        "thermalization_pass": thermalization_pass, "correlation_pass": correlation_pass,
         "analysis_pass": analysis_pass, "wall_seconds": wall,
         "core_hours": wall * ranks / 3600.0 if math.isfinite(wall) else float("nan"),
         "ess_per_core_hour": total_effective / (wall * ranks / 3600.0)
@@ -394,6 +407,32 @@ def tempering_metadata(run_directory: Path) -> Dict:
                 "crossed_weight_seconds": float(rows[0]["crossed_weight_seconds"]),
             })
     return result
+
+
+def attach_exact_reference(run_directory: Path, result: Dict, absolute_tolerance: float = 0.03) -> None:
+    if int(result.get("L", 99)) > 3 or not result.get("points"):
+        return
+    from exact_diagonalization import exact_split_thermal_observables, exact_thermal_observables
+    spins = int(result["L"]) ** 2
+    for point in result["points"]:
+        if result["method"] == "qcpt":
+            exact = exact_split_thermal_observables(
+                run_directory / "H_fixed.txt", run_directory / "H_gamma.txt",
+                float(point["lambda"]), spins, float(point["beta"]))
+        else:
+            exact = exact_thermal_observables(run_directory / "H.txt", spins, float(point["beta"]))
+        exact["energy_density"] = exact["energy"] / spins
+        exact["specific_heat_density"] = exact["specific_heat"] / spins
+        checks = {}
+        for quantity in ("energy_density", "specific_heat_density"):
+            estimate = point["derived"][quantity]
+            tolerance = max(absolute_tolerance, 5 * float(estimate["standard_error"]))
+            error = abs(float(estimate["mean"]) - exact[quantity])
+            checks[quantity] = {"absolute_error": error, "tolerance": tolerance,
+                                "passed": math.isfinite(error) and error <= tolerance}
+        point["exact_reference"] = exact
+        point["exact_checks"] = checks
+        point["exact_pass"] = all(check["passed"] for check in checks.values())
 
 
 def analyze_run(run_directory: Path) -> Dict:
@@ -433,6 +472,7 @@ def analyze_run(run_directory: Path) -> Dict:
         "target_lambda": float(planned["lambda"]), "target_beta": float(planned["beta"]),
         "tuning": planned.get("tuning", "False") == "True",
     }
+    attach_exact_reference(run_directory, result)
     study.write_json(run_directory / "analysis.json", result)
     return result
 
@@ -562,6 +602,60 @@ def selected_production_rows(root: Path, ranking: Sequence[Mapping]) -> List[Dic
     return sorted(unique.values(), key=lambda row: row["run_id"])
 
 
+def adaptive_extension_rows(root: Path, analyses: Sequence[Mapping]) -> Tuple[List[Dict[str, str]], List[Dict]]:
+    """Create immutable successor runs; never weaken a failed statistical gate."""
+    if not (root / "plan.csv").exists():
+        return [], []
+    plan = {row["run_id"]: row for row in study.read_csv(root / "plan.csv")}
+    extensions, decisions = [], []
+    for result in analyses:
+        template = plan.get(result.get("run_id"))
+        points = result.get("points", [])
+        if template is None or not points or result.get("analysis_pass"):
+            continue
+        double_warmup = any(not point.get("thermalization_pass", False) for point in points)
+        double_sampling = any(
+            not point.get("correlation_pass", False) or
+            float(point.get("effective_samples", 0.0)) < 400 or
+            not all(point.get("precision", {}).values())
+            for point in points
+        )
+        simulation = {name: int(template[name]) for name in
+                      ("Tsteps", "steps", "steps_per_measurement", "qmax", "nbins",
+                       "max_wall_seconds")}
+        if double_warmup:
+            simulation["Tsteps"] *= 2
+        if double_sampling:
+            simulation["steps"] *= 2
+        wall = max((float(point.get("wall_seconds", float("nan"))) for point in points), default=float("nan"))
+        old_updates = int(template["Tsteps"]) + int(template["steps"])
+        new_updates = simulation["Tsteps"] + simulation["steps"]
+        predicted_wall = wall * new_updates / old_updates if math.isfinite(wall) else float("nan")
+        reasons = ((["thermalization"] if double_warmup else []) +
+                   (["correlation_ess_or_precision"] if double_sampling else []))
+        decision = {"parent_run_id": template["run_id"], "reasons": reasons,
+                    "predicted_wall_seconds": predicted_wall, "job_cap_seconds": simulation["max_wall_seconds"]}
+        if math.isfinite(predicted_wall) and predicted_wall > simulation["max_wall_seconds"]:
+            decision.update({"status": "job_cap_rejected", "successor_run_id": None})
+            decisions.append(decision)
+            continue
+        successor = study.make_plan_row(
+            study.source_commit(), template["campaign"], template["method"],
+            template["protocol"], int(template["L"]), float(template["lambda"]),
+            float(template["beta"]), template["periodic"] == "True",
+            template["representation"], int(template["parity"]), int(template["seed"]),
+            template["tuning"] == "True", simulation, schedule_name=template["schedule_name"],
+            move=template.get("move", "none"))
+        if successor["run_id"] in plan:
+            decision.update({"status": "already_planned", "successor_run_id": successor["run_id"]})
+        else:
+            extensions.append(successor)
+            decision.update({"status": "planned", "successor_run_id": successor["run_id"]})
+        decisions.append(decision)
+    unique = {row["run_id"]: row for row in extensions}
+    return sorted(unique.values(), key=lambda row: row["run_id"]), decisions
+
+
 def beta_convergence(rows: Sequence[Mapping], quantity: str) -> List[Dict]:
     groups = {}
     for row in rows:
@@ -612,4 +706,7 @@ def analyze_campaign(root: Path) -> None:
     study.write_csv(root / "schedule_ranking.csv", schedule_ranking)
     study.write_json(root / "schedule_ranking.json", schedule_ranking)
     study.write_csv(root / "production_plan.csv", selected_production_rows(root, schedule_ranking))
+    extension_rows, extension_decisions = adaptive_extension_rows(root, analyses)
+    study.write_csv(root / "extension_plan.csv", extension_rows)
+    study.write_json(root / "extension_decisions.json", extension_decisions)
     print(f"analyzed {len(analyses)} runs; {sum(bool(result.get('analysis_pass')) for result in analyses)} passed")

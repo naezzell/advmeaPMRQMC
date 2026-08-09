@@ -60,6 +60,14 @@ All expected per-rank trace files passed schema checks. This deliberately short
 run validates wiring and gross correctness only; its uncertainty is too large
 for efficiency comparisons.
 
+The first content-addressed campaign smoke, run `aee1cea9a2fae828`, used four
+chains of a 2x2 OBC TFIM at `(Gamma,beta)=(1,0.5)`. It passed the five-SE exact
+diagonalization gates for energy density and specific heat density, but failed
+production gates without any tolerance change: R-hat was 1.027, total ESS was
+205, fewer than 50 common jackknife blocks remained, and both precision targets
+were missed. The adaptive decision therefore doubles both warmup and sampling.
+The compact record is `results/desktop_smoke_aee1cea9a2fae828.json`.
+
 ## Limitations
 
 - The current analysis uses energy to choose the common block length; advanced
@@ -68,7 +76,11 @@ for efficiency comparisons.
   gates can be exercised across four independent production ladders. The trace
   schema is now emitted, but the campaign-level cross-run gate is pending.
 - Four-chain automatic extension and measurement-interval selection remain to
-  be connected to the campaign runner.
+  be evaluated on nontrivial TFIM sizes. The runner now creates immutable
+  doubled-resource successor runs and stops at the per-job or 24-hour cap.
+- For this tiny smoke, simulator compilation took about 10.9 seconds while the
+  simulator-reported wall time was 0.11 seconds. Build caching is needed before
+  end-to-end timings on short jobs are interpretable.
 
 ## Report-ready Claims
 

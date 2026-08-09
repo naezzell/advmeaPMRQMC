@@ -57,6 +57,18 @@ class StudyStatsTest(unittest.TestCase):
         self.assertAlmostEqual(result["effective_gap"]["mean"], 1.0)
         self.assertEqual(result["energy"]["blocks"], 100)
 
+    def test_jackknife_blocks_do_not_cross_streams(self):
+        rows = []
+        for stream in (0, 1):
+            for _ in range(15):
+                rows.append({"stream": stream, "sign": 1.0,
+                             "signed_obs_2": -1.0, "signed_obs_3": 1.0})
+        result = stats.joint_block_jackknife(
+            rows, beta=1.0, spins=1, block_length=10,
+            observable_columns=["obs_2", "obs_3"])
+        self.assertEqual(result["energy"]["blocks"], 2)
+        self.assertTrue(math.isnan(result["fidelity_susceptibility"]["mean"]))
+
     def test_beta_convergence_requires_two_stable_increments(self):
         rows = []
         for beta, value in ((2, 1.2), (4, 1.0015), (8, 1.001), (16, 1.0005)):
@@ -117,6 +129,26 @@ class StudyStatsTest(unittest.TestCase):
         self.assertEqual(sorted(int(row["seed"]) for row in production), [5100, 6100, 7100, 8100])
         self.assertTrue(all(row["tuning"] == "False" for row in production))
         self.assertTrue({row["run_id"] for row in production}.isdisjoint({template["run_id"]}))
+
+    def test_adaptive_extension_doubles_failed_resources(self):
+        simulation = {"Tsteps": 10, "steps": 100, "steps_per_measurement": 1,
+                      "qmax": 64, "nbins": 10, "max_wall_seconds": 100}
+        template = stats.study.make_plan_row(
+            "abc", "adaptive", "current_fixed", "cheap", 4, 3.044, 8.0, True,
+            "standard", 0, 1100, False, simulation)
+        analysis = {"run_id": template["run_id"], "analysis_pass": False, "points": [{
+            "thermalization_pass": False, "correlation_pass": False,
+            "effective_samples": 100, "precision": {"energy_density": False},
+            "wall_seconds": 1.0,
+        }]}
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            stats.study.write_csv(root / "plan.csv", [template])
+            extensions, decisions = stats.adaptive_extension_rows(root, [analysis])
+        self.assertEqual(len(extensions), 1)
+        self.assertEqual(int(extensions[0]["Tsteps"]), 20)
+        self.assertEqual(int(extensions[0]["steps"]), 200)
+        self.assertEqual(decisions[0]["status"], "planned")
 
 
 if __name__ == "__main__":

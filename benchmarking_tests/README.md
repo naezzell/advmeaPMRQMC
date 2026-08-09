@@ -26,7 +26,7 @@ to carry into the final report.
 | M00 | Methodology and provenance | ready | `b44818d` | n/a | Protocol and evidence schema defined |
 | H01 | Historical reproduction | planned | pending | pending | — |
 | E02 | Fast FS estimator | planned | pending | pending | — |
-| A03 | Autocorrelation automation | smoke validated | this commit | `STREAM-SMOKE-20260809` | Independent signed stream traces and all-slot QCPT analysis validated |
+| A03 | Autocorrelation automation | adaptive smoke failed as expected | this commit | `aee1cea9a2fae828` | Exact gate passed; R-hat/ESS/blocks/precision triggered extension |
 | Q04 | QCPT schedule search | selector implemented | this commit | pending | Four-seed transport gates and separate production seeds |
 | T05 | Critical TFIM scaling | planned | pending | pending | — |
 | S06 | SSE comparison | adapter ready, image build blocked | this commit | pending | ALPS normalization and source/base pins tested |

@@ -92,4 +92,13 @@ No scientific claim is made until implementation and validation runs exist.
 - Which observable is the first to fail beta convergence as `L` grows?
 - Is critical slowing, PMR update cost, divided-difference evaluation, or the
   FS estimator the dominant desktop bottleneck?
+
+## Adaptive execution policy
+
+`study.py pilot` enforces a total desktop budget (24 hours by default). Analysis
+never loosens a failed gate: it doubles `Tsteps` when R-hat or drift fails and
+doubles sampling steps when correlation diagnostics, the 50-block rule, ESS,
+or precision fails. Each extension is a new content-derived run, and predicted
+extensions beyond the two-hour job cap are recorded as rejected rather than
+started. The default pilot permits three extension rounds and is resumable.
 - Does QCPT improve target-slot ESS per core-hour after crossed-weight cost?

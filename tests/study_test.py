@@ -71,6 +71,7 @@ class StudyTest(unittest.TestCase):
         cheap = study.parameter_text(base)
         self.assertIn("MEASURE_H2", cheap)
         self.assertNotIn("MEASURE_HOFFDIAG_FINT", cheap)
+        self.assertIn("RESUME_CALCULATION", cheap)
         base["protocol"] = "advanced"
         advanced = study.parameter_text(base)
         self.assertIn("MEASURE_HOFFDIAG_FINT", advanced)
