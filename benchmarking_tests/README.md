@@ -29,7 +29,7 @@ to carry into the final report.
 | A03 | Autocorrelation automation | smoke validated | this commit | `STREAM-SMOKE-20260809` | Independent signed stream traces and all-slot QCPT analysis validated |
 | Q04 | QCPT schedule search | selector implemented | this commit | pending | Four-seed transport gates and separate production seeds |
 | T05 | Critical TFIM scaling | planned | pending | pending | — |
-| S06 | SSE comparison | planned | pending | pending | — |
+| S06 | SSE comparison | adapter ready, image build blocked | this commit | pending | ALPS normalization and source/base pins tested |
 | M07 | Model-specific moves | correctness smoke passed | this commit | `Z2-SMOKE-20260809` | Acceptance-one global Z2 move gated to standard TFIM |
 
 ## Report assembly
