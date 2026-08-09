@@ -76,6 +76,10 @@ hardest coordinate.
 - Exact coordinate matching means schedules intended to contribute production
   marginals should be designed from the declared grid, rather than merely pass
   near it.
+- Adaptive resource levels are ranked separately: warmup, production updates,
+  and measurement interval are part of candidate identity and the selected
+  production template. A failed short parent therefore cannot poison its
+  successful extension or cause production to copy the wrong budget.
 - The classical dogleg does not yet have a Wolff move at its Gamma=0 slots.
 
 ## Report-ready Claims

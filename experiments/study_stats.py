@@ -546,6 +546,8 @@ def analyze_run(run_directory: Path) -> Dict:
         "analysis_schema_version": ANALYSIS_SCHEMA_VERSION,
         "analysis_fingerprint": fingerprint,
         "protocol": planned["protocol"], "L": int(planned["L"]), "seed": int(planned["seed"]),
+        "Tsteps": int(planned["Tsteps"]), "steps": int(planned["steps"]),
+        "steps_per_measurement": int(planned["steps_per_measurement"]),
         "analysis_pass": bool(points) and all(point["analysis_pass"] for point in points),
         "points": points, "trace_paths": [str(path) for path in trace_paths],
         "tempering": tempering_metadata(run_directory) if planned["method"] in ("beta_pt", "qcpt") else {},
@@ -619,6 +621,8 @@ def schedule_candidate_records(analyses: Sequence[Mapping],
             "target_lambda": result["target_lambda"], "target_beta": result["target_beta"],
             "protocol": result["protocol"], "representation": result["representation"],
             "periodic": result["periodic"], "move": result["move"],
+            "Tsteps": result["Tsteps"], "steps": result["steps"],
+            "steps_per_measurement": result["steps_per_measurement"],
             "schedule_name": result["schedule_name"], "seed": result["seed"],
             "target_ess_per_core_hour": endpoint.get("ess_per_core_hour", float("nan")),
             "sweep_ess_per_core_hour": sweep_ess / core_hours
@@ -644,7 +648,8 @@ def rank_schedule_records(records: Sequence[Mapping], minimum_seeds: int = 4,
         raise ValueError("schedule selection metric must be target, sweep, or objective")
     candidates = {}
     candidate_fields = ("L", "target_lambda", "target_beta", "protocol", "representation",
-                        "periodic", "move", "schedule_name")
+                        "periodic", "move", "Tsteps", "steps", "steps_per_measurement",
+                        "schedule_name")
     for record in records:
         key = tuple(record[field] for field in candidate_fields)
         candidates.setdefault(key, []).append(record)
@@ -721,6 +726,9 @@ def selected_production_rows(root: Path, ranking: Sequence[Mapping]) -> List[Dic
                          float(row["beta"]) == float(winner["target_beta"]) and
                          row["protocol"] == winner["protocol"] and
                          row["representation"] == winner["representation"] and
+                         int(row["Tsteps"]) == int(winner["Tsteps"]) and
+                         int(row["steps"]) == int(winner["steps"]) and
+                         int(row["steps_per_measurement"]) == int(winner["steps_per_measurement"]) and
                          row.get("move", "none") == winner["move"]), None)
         if template is None:
             continue
