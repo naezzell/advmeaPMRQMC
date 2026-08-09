@@ -19,6 +19,17 @@
       "representation": "standard",
       "moves": ["none", "global_z2"],
       "protocols": ["cheap"]
+    },
+    {
+      "L": [4],
+      "lambda": [1.0],
+      "beta_over_L": [1.0],
+      "periodic": true,
+      "representation": "rotated_parity",
+      "parity": 1,
+      "methods": ["current_fixed"],
+      "moves": ["none"],
+      "protocols": ["cheap"]
     }
   ]
 }

@@ -373,6 +373,8 @@ def parameter_text(row: Mapping[str, str]) -> str:
                   "MEASURE_HOFFDIAG_FINT"]
     elif protocol != "none":
         raise ValueError(f"unknown measurement protocol: {protocol}")
+    if protocol != "none":
+        macros.append("MEASURE_Z_MAGNETIZATION")
     definitions = "\n".join(f"#define {macro}" for macro in macros)
     move_definition = "#define TFIM_GLOBAL_Z2_MOVE" if row.get("move", "none") == "global_z2" else ""
     return f"""#define Tsteps {int(row['Tsteps'])}

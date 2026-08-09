@@ -104,6 +104,10 @@ covers identical discrete chains. Trace schema 3 also records instantaneous
 - For this tiny smoke, simulator compilation took about 10.9 seconds while the
   simulator-reported wall time was 0.11 seconds. Build caching is needed before
   end-to-end timings on short jobs are interpretable.
+- Campaign reanalysis currently recomputes every unchanged trace. In the 12-run
+  model-control campaign, Python diagnostics took minutes while individual
+  standard-representation simulations took about 12 seconds. Analysis results
+  need trace-checksum-based caching and vectorized/FFT autocorrelation kernels.
 
 ## Report-ready Claims
 

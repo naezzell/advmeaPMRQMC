@@ -22,6 +22,7 @@ OBSERVABLE_INDEX = {
     "energy2": 3,
     "hdiag": 4,
     "hoffdiag": 6,
+    "z_magnetization": 8,
     "hdiag_eint": 10,
     "hdiag_fint": 11,
     "hoffdiag_eint": 13,
@@ -340,6 +341,23 @@ def analyze_point(rows: Sequence[Mapping[str, float]], planned: Mapping[str, str
         diagnostics.append({"stream": stream, "measurements": len(values),
                             "autocorrelation": autocorrelation,
                             "blocking": plateau, "effective_samples": effective})
+    observable_diagnostics = {"energy": diagnostics}
+    z_magnetization_effective = float("nan")
+    z_magnetization_iats = []
+    if rows and "signed_obs_8" in rows[0] and planned["protocol"] != "none":
+        z_diagnostics = []
+        z_magnetization_effective = 0.0
+        for stream, stream_rows in streams.items():
+            values = linearized_ratio_values(stream_rows, "obs_8")
+            autocorrelation = integrated_autocorrelation(values)
+            effective = len(values) / autocorrelation["iat"] if autocorrelation["iat"] else 0.0
+            z_magnetization_effective += effective
+            if math.isfinite(float(autocorrelation["iat"])):
+                z_magnetization_iats.append(float(autocorrelation["iat"]))
+            z_diagnostics.append({"stream": stream, "measurements": len(values),
+                                  "autocorrelation": autocorrelation,
+                                  "effective_samples": effective})
+        observable_diagnostics["z_magnetization"] = z_diagnostics
     component_extractors = {
         "energy_numerator": lambda row: float(row["signed_obs_2"]),
         "sign": lambda row: float(row["sign"]),
@@ -400,7 +418,12 @@ def analyze_point(rows: Sequence[Mapping[str, float]], planned: Mapping[str, str
         "tuning": planned["tuning"] == "True", "streams": len(streams),
         "rhat": rhat, "drift": drift, "diagnostics": diagnostics,
         "rhat_components": rhat_components,
+        "observable_diagnostics": observable_diagnostics,
         "effective_samples": total_effective, "block_length": block_length,
+        "energy_median_iat": statistics.median(valid_iats) if valid_iats else float("nan"),
+        "z_magnetization_effective_samples": z_magnetization_effective,
+        "z_magnetization_median_iat": statistics.median(z_magnetization_iats)
+        if z_magnetization_iats else float("nan"),
         "derived": derived, "precision": precision, "convergence_pass": convergence,
         "thermalization_pass": thermalization_pass, "correlation_pass": correlation_pass,
         "analysis_pass": analysis_pass, "wall_seconds": wall,
@@ -516,7 +539,9 @@ def flatten_analysis(result: Mapping) -> List[Dict]:
                 "schedule_name", "move", "mean_sign", "measurement_core_seconds",
                 "measurement_core_fraction",
                 "streams", "rhat", "effective_samples", "convergence_pass",
-                "analysis_pass", "wall_seconds", "core_hours", "ess_per_core_hour")}
+                "energy_median_iat", "z_magnetization_effective_samples",
+                "z_magnetization_median_iat", "analysis_pass", "wall_seconds",
+                "core_hours", "ess_per_core_hour")}
         for name, estimate in point.get("derived", {}).items():
             row[name] = estimate.get("mean")
             row[name + "_se"] = estimate.get("standard_error")

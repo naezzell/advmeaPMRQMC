@@ -30,7 +30,7 @@ to carry into the final report.
 | Q04 | QCPT schedule search | sweep-aware selector implemented | this commit | pending | Winner can optimize declared figure-grid ESS, coverage, or endpoint ESS |
 | T05 | Critical TFIM scaling | planned | pending | pending | — |
 | S06 | SSE comparison | adapter ready, image build blocked | this commit | pending | ALPS normalization and source/base pins tested |
-| M07 | Model-specific moves | correctness smoke passed | this commit | `Z2-SMOKE-20260809` | Acceptance-one global Z2 move gated to standard TFIM |
+| M07 | Model-specific moves | four-seed pilot measured | this commit | 12 matched IDs in note | Z-magnetization ESS/core-hour 4.65x, but production gate fails; standard basis strongly favored |
 
 ## Report assembly
 
