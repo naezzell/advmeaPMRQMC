@@ -125,6 +125,49 @@ class StudyStatsTest(unittest.TestCase):
         self.assertFalse(by_name["stuck"]["eligible"])
         self.assertFalse(by_name["stuck"]["selected"])
 
+    def test_schedule_selection_can_optimize_declared_sweep_objective(self):
+        records = []
+        for schedule, endpoint, objective, coverage in (
+                ("endpoint", 100.0, 10.0, 0.1), ("figure_grid", 20.0, 80.0, 0.6)):
+            for seed in (1, 2, 3, 4):
+                records.append({
+                    "run_id": f"{schedule}-{seed}", "L": 4, "target_lambda": 3.044,
+                    "target_beta": 8.0, "protocol": "cheap", "representation": "standard",
+                    "periodic": True, "move": "none", "schedule_name": schedule, "seed": seed,
+                    "target_ess_per_core_hour": endpoint, "sweep_ess_per_core_hour": endpoint + objective,
+                    "objective_ess_per_core_hour": objective,
+                    "objective_coverage_fraction": coverage,
+                    "worst_edge_acceptance": 0.3, "round_trips": 2,
+                    "qmax_achieved": False, "sign_gate": True, "convergence_gate": True,
+                })
+        ranked = stats.rank_schedule_records(records, selection_metric="objective")
+        selected = next(row for row in ranked if row["selected"])
+        self.assertEqual(selected["schedule_name"], "figure_grid")
+        self.assertEqual(selected["selection_metric"], "objective")
+
+    def test_schedule_objective_counts_only_requested_coordinates(self):
+        analysis = {
+            "run_id": "qcpt", "method": "qcpt", "tuning": True, "L": 4,
+            "target_lambda": 3.044, "target_beta": 4.0, "protocol": "cheap",
+            "representation": "standard", "periodic": True, "move": "none",
+            "schedule_name": "pure_beta", "seed": 1,
+            "points": [
+                {"point": 0, "lambda": 3.044, "beta_over_L": 0.5,
+                 "effective_samples": 40, "core_hours": 1.0, "ess_per_core_hour": 40,
+                 "mean_sign": 1, "convergence_pass": True},
+                {"point": 1, "lambda": 3.044, "beta_over_L": 1.0,
+                 "effective_samples": 60, "core_hours": 1.0, "ess_per_core_hour": 60,
+                 "mean_sign": 1, "convergence_pass": True},
+            ],
+            "tempering": {"worst_edge_acceptance": 0.3, "round_trips": 1},
+        }
+        objective = {"lambda": [2.8, 3.044], "beta_over_L": [0.5, 1.0]}
+        record = stats.schedule_candidate_records([analysis], objective)[0]
+        self.assertEqual(record["objective_points_covered"], 2)
+        self.assertEqual(record["objective_points_total"], 4)
+        self.assertAlmostEqual(record["objective_coverage_fraction"], 0.5)
+        self.assertAlmostEqual(record["objective_ess_per_core_hour"], 100.0)
+
     def test_selected_schedule_uses_disjoint_production_seeds(self):
         simulation = {"Tsteps": 10, "steps": 100, "steps_per_measurement": 1,
                       "qmax": 64, "nbins": 10, "max_wall_seconds": 100}

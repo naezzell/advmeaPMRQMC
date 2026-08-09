@@ -17,7 +17,9 @@ metrics must remain visible.
 
 - Candidate generation: `qcpt_schedule()` in `experiments/study.py`.
 - All-slot analysis and selection: `experiments/study_stats.py`.
-- Desktop tuning matrix: `configs/desktop_pilot.json`.
+- Desktop tuning matrix: `configs/desktop_pilot.json`, which declares the
+  production grid `Gamma={2.8,3.044,3.2}` and `beta/L={0.5,1,2}` and selects
+  by objective-grid ESS/core-hour.
 - Empirical run IDs: pending.
 
 ## Protocol
@@ -39,12 +41,22 @@ discarded tempering overhead. `analyze` writes
 `schedule_ranking.csv/json`; a selected winner generates
 `production_plan.csv` with disjoint seeds 5100, 6100, 7100, and 8100.
 
+The selection policy is explicit campaign configuration: `target`, `sweep`,
+or `objective`. Objective mode sums ESS only at stationary slots matching the
+declared figure grid (with an explicit numerical tolerance), reports the
+covered fraction, and breaks equal objective efficiency by coverage and then
+endpoint efficiency. L-specific objective grids are supported through `by_L`.
+
 ## Results
 
-The deterministic selector test confirms that a high-ESS candidate with a
+The deterministic selector tests confirm that a high-ESS candidate with a
 0.10 worst-edge acceptance is rejected in favor of a lower-ESS candidate that
-passes the 0.15 transport gate. No TFIM schedule has yet been empirically
-ranked.
+passes the 0.15 transport gate; objective selection chooses a lower-endpoint
+schedule when it provides more ESS on the requested figure grid; and only
+coordinates in that grid contribute to objective ESS and coverage. The
+264-row desktop plan is byte-for-byte deterministic across repeated planning
+(SHA-256 `510bb9daedd50e8349f99fa17fd5b5b5ec696f60d0c913ec42f15b406e1e7f05`).
+No TFIM schedule has yet been empirically ranked.
 
 ## Interpretation
 
@@ -58,6 +70,9 @@ hardest coordinate.
 - No bootstrap uncertainty is yet attached to the schedule ranking.
 - Four slots cannot cover a dense two-dimensional grid in one desktop ladder;
   multiple ladder paths are still required.
+- Exact coordinate matching means schedules intended to contribute production
+  marginals should be designed from the declared grid, rather than merely pass
+  near it.
 - The classical dogleg does not yet have a Wolff move at its Gamma=0 slots.
 
 ## Report-ready Claims

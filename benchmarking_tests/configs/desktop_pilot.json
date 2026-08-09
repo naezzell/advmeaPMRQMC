@@ -3,6 +3,12 @@
   "methods": ["current_fixed"],
   "seeds": [1000, 2000, 3000, 4000],
   "production_seeds": [5100, 6100, 7100, 8100],
+  "schedule_selection_metric": "objective",
+  "sweep_objective": {
+    "lambda": [2.8, 3.044, 3.2],
+    "beta_over_L": [0.5, 1.0, 2.0],
+    "match_tolerance": 1e-9
+  },
   "simulation": {
     "Tsteps": 100000,
     "steps": 1000000,

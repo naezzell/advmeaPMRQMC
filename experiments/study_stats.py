@@ -524,7 +524,21 @@ def flatten_analysis(result: Mapping) -> List[Dict]:
     return output
 
 
-def schedule_candidate_records(analyses: Sequence[Mapping]) -> List[Dict]:
+def objective_coordinates(objective: Mapping, length: int) -> List[Tuple[float, float]]:
+    """Expand the declared figure grid into (Gamma, beta/L) coordinates."""
+    lambdas = objective.get("lambda", [])
+    beta_ratios = objective.get("beta_over_L", [])
+    by_length = objective.get("by_L", {}).get(str(length), {})
+    lambdas = by_length.get("lambda", lambdas)
+    beta_ratios = by_length.get("beta_over_L", beta_ratios)
+    return [(float(coupling), float(beta_ratio))
+            for coupling in lambdas for beta_ratio in beta_ratios]
+
+
+def schedule_candidate_records(analyses: Sequence[Mapping],
+                               sweep_objective: Optional[Mapping] = None) -> List[Dict]:
+    sweep_objective = sweep_objective or {}
+    tolerance = float(sweep_objective.get("match_tolerance", 1e-9))
     records = []
     for result in analyses:
         if result.get("method") != "qcpt" or not result.get("tuning") or not result.get("points"):
@@ -533,6 +547,17 @@ def schedule_candidate_records(analyses: Sequence[Mapping]) -> List[Dict]:
         endpoint = max(points, key=lambda point: int(point["point"]))
         core_hours = endpoint.get("core_hours", float("nan"))
         sweep_ess = sum(float(point.get("effective_samples", 0.0)) for point in points)
+        targets = objective_coordinates(sweep_objective, int(result["L"]))
+        matched_targets = set()
+        objective_ess = 0.0
+        for point in points:
+            coordinate = (float(point["lambda"]), float(point["beta_over_L"]))
+            matches = [target for target in targets
+                       if abs(coordinate[0] - target[0]) <= tolerance and
+                       abs(coordinate[1] - target[1]) <= tolerance]
+            if matches:
+                matched_targets.update(matches)
+                objective_ess += float(point.get("effective_samples", 0.0))
         tempering = result.get("tempering", {})
         records.append({
             "run_id": result["run_id"], "L": result["L"],
@@ -543,6 +568,11 @@ def schedule_candidate_records(analyses: Sequence[Mapping]) -> List[Dict]:
             "target_ess_per_core_hour": endpoint.get("ess_per_core_hour", float("nan")),
             "sweep_ess_per_core_hour": sweep_ess / core_hours
             if math.isfinite(float(core_hours)) and float(core_hours) > 0 else float("nan"),
+            "objective_ess_per_core_hour": objective_ess / core_hours
+            if targets and math.isfinite(float(core_hours)) and float(core_hours) > 0 else float("nan"),
+            "objective_points_covered": len(matched_targets),
+            "objective_points_total": len(targets),
+            "objective_coverage_fraction": len(matched_targets) / len(targets) if targets else float("nan"),
             "worst_edge_acceptance": tempering.get("worst_edge_acceptance", float("nan")),
             "round_trips": tempering.get("round_trips", 0),
             "qmax_achieved": tempering.get("qmax_achieved", False),
@@ -553,7 +583,10 @@ def schedule_candidate_records(analyses: Sequence[Mapping]) -> List[Dict]:
 
 
 def rank_schedule_records(records: Sequence[Mapping], minimum_seeds: int = 4,
-                          minimum_acceptance: float = 0.15) -> List[Dict]:
+                          minimum_acceptance: float = 0.15,
+                          selection_metric: str = "target") -> List[Dict]:
+    if selection_metric not in {"target", "sweep", "objective"}:
+        raise ValueError("schedule selection metric must be target, sweep, or objective")
     candidates = {}
     candidate_fields = ("L", "target_lambda", "target_beta", "protocol", "representation",
                         "periodic", "move", "schedule_name")
@@ -565,6 +598,10 @@ def rank_schedule_records(records: Sequence[Mapping], minimum_seeds: int = 4,
         acceptances = finite(float(run["worst_edge_acceptance"]) for run in runs)
         target_scores = finite(float(run["target_ess_per_core_hour"]) for run in runs)
         sweep_scores = finite(float(run["sweep_ess_per_core_hour"]) for run in runs)
+        objective_scores = finite(float(run.get("objective_ess_per_core_hour", float("nan")))
+                                  for run in runs)
+        coverage = finite(float(run.get("objective_coverage_fraction", float("nan")))
+                          for run in runs)
         eligible = (len({run["seed"] for run in runs}) >= minimum_seeds and
                     len(target_scores) == len(runs) and bool(acceptances) and
                     min(acceptances) >= minimum_acceptance and
@@ -579,6 +616,11 @@ def rank_schedule_records(records: Sequence[Mapping], minimum_seeds: int = 4,
             "round_trips": sum(int(run["round_trips"]) for run in runs),
             "median_target_ess_per_core_hour": statistics.median(target_scores) if target_scores else float("nan"),
             "median_sweep_ess_per_core_hour": statistics.median(sweep_scores) if sweep_scores else float("nan"),
+            "median_objective_ess_per_core_hour": statistics.median(objective_scores)
+            if objective_scores else float("nan"),
+            "median_objective_coverage_fraction": statistics.median(coverage)
+            if coverage else float("nan"),
+            "selection_metric": selection_metric,
             "eligible": eligible, "selected": False,
         })
         ranked.append(row)
@@ -589,8 +631,17 @@ def rank_schedule_records(records: Sequence[Mapping], minimum_seeds: int = 4,
     for group in comparison_groups.values():
         survivors = [row for row in group if row["eligible"]]
         if survivors:
-            max(survivors, key=lambda row: (row["median_target_ess_per_core_hour"],
-                                            row["median_sweep_ess_per_core_hour"]))["selected"] = True
+            def selection_key(row):
+                score_fields = {
+                    "target": ("median_target_ess_per_core_hour", "median_sweep_ess_per_core_hour"),
+                    "sweep": ("median_sweep_ess_per_core_hour", "median_target_ess_per_core_hour"),
+                    "objective": ("median_objective_ess_per_core_hour",
+                                  "median_objective_coverage_fraction",
+                                  "median_target_ess_per_core_hour"),
+                }[selection_metric]
+                return tuple(float(row[field]) if math.isfinite(float(row[field])) else float("-inf")
+                             for field in score_fields)
+            max(survivors, key=selection_key)["selected"] = True
     return sorted(ranked, key=lambda row: tuple(str(row[field]) for field in comparison_fields) +
                   (not row["selected"], -float(row["median_target_ess_per_core_hour"])
                    if math.isfinite(float(row["median_target_ess_per_core_hour"])) else float("inf")))
@@ -733,7 +784,14 @@ def analyze_campaign(root: Path) -> None:
     for quantity in PRECISION_TARGETS:
         beta.extend(beta_convergence(flat, quantity))
     study.write_json(root / "beta_convergence.json", beta)
-    schedule_ranking = rank_schedule_records(schedule_candidate_records(analyses))
+    campaign_config = {}
+    if (root / "campaign_manifest.json").exists():
+        campaign_config = json.loads((root / "campaign_manifest.json").read_text()).get("config", {})
+    sweep_objective = campaign_config.get("sweep_objective", {})
+    selection_metric = campaign_config.get("schedule_selection_metric", "target")
+    schedule_ranking = rank_schedule_records(
+        schedule_candidate_records(analyses, sweep_objective),
+        selection_metric=selection_metric)
     study.write_csv(root / "schedule_ranking.csv", schedule_ranking)
     study.write_json(root / "schedule_ranking.json", schedule_ranking)
     study.write_csv(root / "production_plan.csv", selected_production_rows(root, schedule_ranking))
