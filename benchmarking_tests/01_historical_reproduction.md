@@ -113,7 +113,7 @@ Machine-readable diagnostics and archive comparisons are in
 `results/historical_4x4_beta0p1_archive_comparison.json`, and
 `results/historical_4x4_beta4_archive_comparison.json`.
 
-### 8x8 historical sweep endpoint pilot
+### 8x8 historical sweep
 
 A clean, source-hashed pilot then ran the second paper's 8x8 OBC standard TFIM
 at beta 1 and the Gamma-sweep endpoints 0.1 and 1.5. Run IDs were
@@ -136,6 +136,19 @@ correlation gates. Compact evidence is in
 `results/historical_8x8_endpoint_pilot.json` and the two corresponding archive
 comparison JSON files.
 
+After committing the endpoint evidence and replanning from clean source
+`0e4bb21`, the intermediate Gamma 0.5 (`9b7fe351d0d97a75`) and 1.0
+(`88c1dd756cadef1c`) points completed in 12.29 and 51.47 seconds. Their mean q
+values were 4.77 and 19.69; energy ESS/core-hour was 343,494 and 57,870. Both
+pass R-hat, drift, and correlation gates and all four shared observables pass
+the archived three-combined-SE check (largest differences 1.13 and 1.01 SE).
+
+Thus the complete one-seed sweep at Gamma `{0.1,0.5,1.0,1.5}` reproduces every
+shared archived value. Energy precision passes through Gamma 1.0, but no point
+meets every advanced-observable precision target; only Gamma 0.5 and 1.0 pass
+both thermalization and correlation. The combined machine-readable record is
+`results/historical_8x8_sweep.json`.
+
 ## Limitations
 
 - The inverse-variance line is a preliminary combination of independently
@@ -152,10 +165,8 @@ comparison JSON files.
 - The 4x4 endpoint pilot has only one four-chain seed group per beta. It
   establishes a computational cliff and correctness at archived endpoints,
   but not a bootstrap-qualified speedup.
-- The 8x8 endpoint pilot likewise has one seed group per Gamma and does not yet
-  include the intermediate 0.5 and 1.0 sweep points. The clean-worktree gate
-  correctly stopped their launch once these new evidence files made the tree
-  dirty; they will be replanned after this commit.
+- The 8x8 sweep has only one four-chain seed group per Gamma. It reproduces the
+  archived curve but is not a four-seed production or speedup ensemble.
 
 ## Report-ready Claims
 

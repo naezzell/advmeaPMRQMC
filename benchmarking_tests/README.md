@@ -24,7 +24,7 @@ to carry into the final report.
 | ID | Topic | Status | Commit | Run IDs | Headline result |
 |---|---|---|---|---|---|
 | M00 | Methodology and provenance | ready | `b44818d` | n/a | Protocol and evidence schema defined |
-| H01 | Historical reproduction | 3x3 reproduced; 4x4/8x8 cliffs measured | this commit | IDs in note | 8x8 beta=1 endpoints match archive; Gamma 0.1→1.5 loses 286x ESS/core-hour |
+| H01 | Historical reproduction | 3x3 and 8x8 sweeps reproduced; 4x4 cliff measured | this commit | IDs in note | All four 8x8 beta=1 Gamma points match archive; advanced precision remains limiting |
 | E02 | Fast FS estimator | L=2 speedup established | this commit | 8 paired run IDs in note | 4.69x measurement and 3.87x wall median speedup |
 | A03 | Autocorrelation automation | diagnostics corrected and cached | this commit | smoke IDs in note; cache uses 12 control runs | Cached repeat 1.06 s vs 263.04 s uncached; summary byte-identical |
 | Q04 | QCPT schedule search | sweep-aware selector implemented | this commit | pending | Winner can optimize declared figure-grid ESS, coverage, or endpoint ESS |
