@@ -1,6 +1,7 @@
 # QCPT Validation Report
 
-Status: complete. The validated implementation is in commit `17b883c`.
+Status: complete. The validated implementation is in commits `17b883c` and
+`9dfe23d`; this report was updated after the final required edge-case matrix.
 
 ## Scope
 
@@ -17,11 +18,13 @@ The implementation preserves the legacy single-Hamiltonian interface and adds:
 - live-snapshot exchanges, independent ladders, signed traces, flow diagnostics, and a distinct atomic checkpoint format;
 - `ABS_WEIGHTS` coverage;
 - reproducible exact two-spin, MAX2SAT, checkpoint, and pilot drivers.
+- focused regressions for pure-beta, pure-gamma, cancellation, repeated energies,
+  schedule cardinality, multiple ladders, and target-weight immutability.
 
 ## Reproduction environment
 
 - Base commit: `f2f8e980962c2ac6098366fed5b1a870c21dd8d9`
-- Validated implementation commit: `17b883c`
+- Validated implementation commits: `17b883c` and `9dfe23d`
 - Compiler: Apple clang 16.0.0 (`clang-1600.0.26.6`)
 - Python: 3.13.3
 - MPI: Open MPI 5.0.7
@@ -29,20 +32,21 @@ The implementation preserves the legacy single-Hamiltonian interface and adds:
 
 The raw outputs below are intentionally outside the repository:
 
-- `/tmp/qcpt_exact_signed_fix`
-- `/tmp/qcpt_exact_abs`
-- `/tmp/qcpt_checkpoint_pass`
-- `/tmp/qcpt_checkpoint_abs`
-- `/tmp/qcpt_max2sat_signed_final`
-- `/tmp/qcpt_pilot_smoke2`
-- `/var/folders/2w/_70fq7w11c36fkhz8pnqp8gw0000gp/T/pmrqmc_pt_validation_9_tpn562`
+- `/tmp/qcpt_exact_current_signed`
+- `/tmp/qcpt_exact_current_abs`
+- `/tmp/qcpt_checkpoint_current_signed`
+- `/tmp/qcpt_checkpoint_current_abs`
+- `/tmp/qcpt_max2sat_current`
+- `/tmp/qcpt_pilot_current`
+- `/tmp/qcpt_edge_cases_required`
+- `/var/folders/2w/_70fq7w11c36fkhz8pnqp8gw0000gp/T/pmrqmc_pt_validation_5mo_1fn3`
 
 ## Automated gates
 
 All gates passed.
 
 ```text
-make test                         10 tests: OK
+make test                         12 tests: OK
 make all                          OK
 make validate-pt                  OK
 validate_qcpt.py                  signed: OK, ABS_WEIGHTS: OK
@@ -50,6 +54,7 @@ validate_checkpoint_resume.py    signed: QCPT + beta: OK
 validate_checkpoint_resume.py    ABS_WEIGHTS QCPT + beta: OK
 validate_qcpt_max2sat.py          4/4 campaigns: OK
 qcpt_pilot.py                     OK
+validate_qcpt_edge_cases.py       OK
 ```
 
 Commands used for the principal campaigns:
@@ -60,28 +65,31 @@ make test
 make all
 make validate-pt
 
-python3 experiments/validate_qcpt.py /tmp/qcpt_exact_signed_fix \
+python3 experiments/validate_qcpt.py /tmp/qcpt_exact_current_signed \
   --Tsteps 5000 --steps 100000 --nbins 50 \
   --updates-per-exchange 10 --oversubscribe
 
-python3 experiments/validate_qcpt.py /tmp/qcpt_exact_abs \
+python3 experiments/validate_qcpt.py /tmp/qcpt_exact_current_abs \
   --Tsteps 5000 --steps 100000 --nbins 50 \
   --updates-per-exchange 10 --oversubscribe --absolute-weights
 
-python3 experiments/validate_checkpoint_resume.py /tmp/qcpt_checkpoint_pass \
+python3 experiments/validate_checkpoint_resume.py /tmp/qcpt_checkpoint_current_signed \
   --Tsteps 5000 --steps 20000 --nbins 20 --checkpoint-every 5000 \
   --updates-per-exchange 10 --oversubscribe
 
-python3 experiments/validate_checkpoint_resume.py /tmp/qcpt_checkpoint_abs \
+python3 experiments/validate_checkpoint_resume.py /tmp/qcpt_checkpoint_current_abs \
   --Tsteps 5000 --steps 20000 --nbins 20 --checkpoint-every 5000 \
   --updates-per-exchange 10 --oversubscribe --absolute-weights
 
-python3 experiments/validate_qcpt_max2sat.py /tmp/qcpt_max2sat_signed_final \
+python3 experiments/validate_qcpt_max2sat.py /tmp/qcpt_max2sat_current \
   --Tsteps 2000 --steps 200000 --nbins 40 \
   --instance-seeds 11,12 --qmc-seeds 1000,2000 --oversubscribe
 
-python3 experiments/qcpt_pilot.py /tmp/qcpt_pilot_smoke2 \
+python3 experiments/qcpt_pilot.py /tmp/qcpt_pilot_current \
   --Tsteps 1000 --steps 10000 --nbins 10 --oversubscribe
+
+python3 experiments/validate_qcpt_edge_cases.py /tmp/qcpt_edge_cases_required \
+  --oversubscribe
 ```
 
 ## Fully mixed two-spin exact validation
@@ -122,6 +130,31 @@ Target-weight sensitivity controls also passed:
 | reuse local off-diagonal product, q=2 | 0.00899646 |
 
 Thus both principal target-weight mistakes are detected by the test-only controls.
+
+## Required edge-case matrix
+
+The final required-only campaign is recorded in
+`/tmp/qcpt_edge_cases_required/edge_case_validation.json` and passed with the
+current code.
+
+- Pure-beta paths used four points with constant `gamma=0.75`. QCPT and legacy
+  beta-only PT agreed pointwise under identical seeds, and both agreed with the
+  exact two-spin values within the campaign tolerances.
+- Pure-gamma paths used fixed `beta=0.90` and `gamma=0, 0.5, 1.0, 1.5`.
+  The `gamma=0` expansion order was exactly zero; every nonzero point matched
+  the exact energy and the fixed-QMC expansion-order oracle.
+- Two-point/4-rank and three-point/6-rank QCPT schedules ran with two
+  independent ladders. Every swap edge was attempted (`10500` attempts per
+  edge), and the flow files had the expected 4 and 9 rows respectively.
+- Preparation preserved cancellation between fixed and gamma components,
+  retained repeated energies without non-finite output, and passed the exact
+  repeated-energy checks.
+- The direct target-weight evaluator regression passed without changing active
+  state, RNG sequence, energies, divided-difference cache, or parameters.
+
+The edge fixture uses real coefficients only. Complex Hamiltonian coefficients
+are intentionally outside the current requested scope and are not claimed by
+this validation report.
 
 ## Exact n=10 3-regular MAX2SAT campaign
 
@@ -177,10 +210,10 @@ The pilot used one `n=20` instance, two independent ladders, and eight ranks in 
 
 | quantity | beta-only PT | mixed QCPT |
 |---|---:|---:|
-| wall seconds | 0.5722 | 0.5533 |
+| wall seconds | 0.8706 | 1.1376 |
 | average sign | 1.0 | 1.0 |
 | effective samples | 183.39 | 151.74 |
-| effective samples/core-hour | 144,220 | 123,403 |
+| effective samples/core-hour | 94,795 | 60,022 |
 | integrated autocorrelation (measurements) | 10.91 | 13.18 |
 | adjacent acceptance | 0.480, 0.257, 0.092 | 0.485, 0.334, 0.271 |
 | endpoint visits | 4,400 | 4,400 |
@@ -188,9 +221,9 @@ The pilot used one `n=20` instance, two independent ladders, and eight ranks in 
 | mean q | 1.542 | 0.156 |
 | max q | 14 | 4 |
 | qmax hit | false | false |
-| crossed-weight fraction | 0.352 | 0.129 |
+| crossed-weight fraction | 0.373 | 0.197 |
 
-The fixed control completed in 0.4814 seconds on eight ranks. The pilot demonstrates the requested instrumentation and healthy exchange/flow diagnostics; it does not establish a general speedup.
+The fixed control completed in 0.7840 seconds on eight ranks. The pilot demonstrates the requested instrumentation and healthy exchange/flow diagnostics; it does not establish a general speedup.
 
 ## Resolved failures and permanent regressions
 
@@ -200,6 +233,11 @@ The fixed control completed in 0.4814 seconds on eight ranks. The pilot demonstr
 4. The n=10 driver initially failed while serializing tuple-valued exact-point keys, and zero-variance summaries were not JSON-safe. The driver now serializes points as lists and normalizes zero standard deviations; the final four-campaign artifact passes.
 5. A 50,000-update n=10 campaign under-resolved one seed. The final 200,000-update rerun passed all four seeds without changing tolerances, dropping seeds, or changing correctness logic.
 6. A sandbox-only MPI launch failed before program startup because Open MPI could not bind local sockets. Re-running with the required external MPI permission passed; this was not a program or validation failure.
+7. The first pure-beta split-Hamiltonian regression exposed that the legacy
+   beta-only executable was reading the schedule's compatibility gamma
+   placeholder (`1.0`) as a physical coefficient. Legacy setup now preserves
+   the compile-time gamma, while QCPT continues to read the schedule gamma;
+   the pure-beta QCPT/PT equivalence regression covers this permanently.
 
 ## Claims and limitations
 
