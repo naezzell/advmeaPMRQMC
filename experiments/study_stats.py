@@ -737,7 +737,7 @@ def selected_production_rows(root: Path, ranking: Sequence[Mapping]) -> List[Dic
                        "max_wall_seconds")}
         for seed in production_seeds:
             rows.append(study.make_plan_row(
-                template["source_commit"], template["campaign"] + "_production", "qcpt",
+                study.source_commit(), template["campaign"] + "_production", "qcpt",
                 template["protocol"], int(template["L"]), float(template["lambda"]),
                 float(template["beta"]), template["periodic"] == "True",
                 template["representation"], int(template["parity"]), int(seed), False,

@@ -84,6 +84,10 @@ hardest coordinate.
   transient `extension_plan.csv`. Production promotion and further extensions
   therefore retain the exact successful resource level even after the next
   extension plan is generated.
+- Production rows preserve the winning physical/resource specification but are
+  content-identified at the current clean source revision, so provenance gates
+  do not reject promotion merely because analysis/ranking code was committed
+  after tuning.
 - The classical dogleg does not yet have a Wolff move at its Gamma=0 slots.
 
 ## Report-ready Claims

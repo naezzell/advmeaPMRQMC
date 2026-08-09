@@ -190,6 +190,7 @@ class StudyStatsTest(unittest.TestCase):
             production = stats.selected_production_rows(root, [winner])
         self.assertEqual(sorted(int(row["seed"]) for row in production), [5100, 6100, 7100, 8100])
         self.assertTrue(all(row["tuning"] == "False" for row in production))
+        self.assertTrue(all(row["source_commit"] == stats.study.source_commit() for row in production))
         self.assertTrue({row["run_id"] for row in production}.isdisjoint({template["run_id"]}))
 
     def test_schedule_ranking_separates_adaptive_resource_levels(self):
