@@ -467,7 +467,8 @@ def execute_row(row: Mapping[str, str], campaign_root: Path, resume: bool,
     if method == "current_fixed":
         binary, source, defines = "PMRQMC_mpi.bin", "PMRQMC_mpi.cpp", []
         launch = ["mpirun"] + (["--oversubscribe"] if oversubscribe else []) + [
-            "-n", str(ranks), "./PMRQMC_mpi.bin", "--timeseries-prefix", "trace.csv"
+            "-n", str(ranks), "./PMRQMC_mpi.bin", "--timeseries-prefix", "trace.csv",
+            "--stream-timeseries-prefix", "trace_stream"
         ]
     elif method in ("beta_pt", "qcpt"):
         binary = "PMRQMC_qcpt_mpi.bin" if method == "qcpt" else "PMRQMC_pt_mpi.bin"
@@ -478,6 +479,7 @@ def execute_row(row: Mapping[str, str], campaign_root: Path, resume: bool,
             "-n", str(ranks), f"./{binary}", "--schedule", "schedule.txt",
             "--updates-per-exchange", "10", "--independent-ladders", "1",
             "--output-prefix", "tempered", "--timeseries-prefix", "trace.csv",
+            "--stream-timeseries-prefix", "trace_stream",
         ]
     else:
         raise ValueError(f"execution adapter not implemented for method {method}")

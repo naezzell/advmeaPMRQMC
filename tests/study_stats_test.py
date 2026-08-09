@@ -66,6 +66,18 @@ class StudyStatsTest(unittest.TestCase):
         self.assertTrue(result["converged"])
         self.assertIsNone(result["next_beta_over_L"])
 
+    def test_qcpt_preserves_every_slot_as_production_point(self):
+        planned = {"method": "qcpt", "beta": "8", "lambda": "3.0"}
+        rows = [
+            {"slot": slot, "beta": beta, "gamma": gamma, "sign": 1.0,
+             "signed_obs_2": -1.0}
+            for slot, beta, gamma in ((0, 1.0, 0.0), (1, 2.0, 1.5), (2, 4.0, 3.0))
+        ]
+        points = stats.split_parameter_points(rows, planned)
+        self.assertEqual([point[0]["slot"] for point in points], [0, 1, 2])
+        self.assertEqual([point[0]["lambda"] for point in points], [0.0, 1.5, 3.0])
+        self.assertEqual([point[0]["beta"] for point in points], [1.0, 2.0, 4.0])
+
 
 if __name__ == "__main__":
     unittest.main()

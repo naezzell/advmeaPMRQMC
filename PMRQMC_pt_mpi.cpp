@@ -41,6 +41,7 @@ struct PTOptions {
 	std::string schedule;
 	std::string output_prefix;
 	std::string timeseries_prefix;
+	std::string stream_timeseries_prefix;
 	int updates_per_exchange = 10;
 	int independent_ladders = 0;
 	int checkpoint_every = 0;
@@ -64,10 +65,10 @@ static void usage(const char* program){
 	if(mpi_rank == 0) std::cerr
 		<< "Usage: " << program << " --schedule FILE [--updates-per-exchange N]\\n"
 		<< "       [--independent-ladders N] [--output-prefix PREFIX] [--timeseries-prefix FILE]\\n"
+		<< "       [--stream-timeseries-prefix PREFIX]\\n"
 		<< "       [--checkpoint-every N] [--resume] [--stop-after-checkpoint]\\n"
 		<< "       [--beta-anneal [--anneal-start-factor F] | --beta-anneal-schedule FILE]\\n"
 		<< "       [--anneal-interval N]\\n";
-
 }
 
 static bool parse_options(int argc, char** argv, PTOptions& options){
@@ -79,6 +80,7 @@ static bool parse_options(int argc, char** argv, PTOptions& options){
 		else if(arg == "--checkpoint-every" && i+1<argc) options.checkpoint_every = std::atoi(argv[++i]);
 		else if(arg == "--output-prefix" && i+1<argc) options.output_prefix = argv[++i];
 		else if(arg == "--timeseries-prefix" && i+1<argc) options.timeseries_prefix = argv[++i];
+		else if(arg == "--stream-timeseries-prefix" && i+1<argc) options.stream_timeseries_prefix = argv[++i];
 		else if(arg == "--resume") options.resume = true;
 		else if(arg == "--stop-after-checkpoint") options.stop_after_checkpoint = true;
 		else if(arg == "--beta-anneal") options.anneal.automatic = true;
@@ -113,6 +115,41 @@ static void write_timeseries_row(std::ofstream& output, int temperature, double 
 		<< measurement << ',' << updates << ',' << sign;
 	for(int k=0;k<N_all_observables;k++)
 		output << ',' << observables[k] << ',' << signed_observables[k];
+	output << ',' << elapsed_seconds << '\n';
+}
+
+static std::string stream_timeseries_name(const std::string& prefix, int rank){
+	return prefix + ".rank" + std::to_string(rank) + ".csv";
+}
+
+static bool file_has_content(const std::string& path){
+	std::ifstream input(path.c_str(),std::ios::binary|std::ios::ate);
+	return input.good() && input.tellg() > 0;
+}
+
+static void write_stream_timeseries_header(std::ofstream& output){
+#ifdef PMR_QCPT
+	output << "stream,ladder,rank,slot,beta,gamma,tau,measurement,updates,trajectory,sign";
+#else
+	output << "stream,ladder,rank,temperature,beta,tau,measurement,updates,trajectory,sign";
+#endif
+	for(int k=0;k<N_all_observables;k++)
+		output << ",obs_" << k << ",signed_obs_" << k;
+	output << ",elapsed_seconds\n";
+}
+
+static void write_stream_timeseries_row(std::ofstream& output, int ladder, int rank,
+		int temperature, const PMRTemperatures& schedule, unsigned long long measurement,
+		uint64_t updates, uint64_t trajectory_id, double elapsed_seconds){
+	output << ladder << ',' << ladder << ',' << rank << ',' << temperature << ','
+		<< std::setprecision(17) << schedule.beta[temperature] << ',';
+#ifdef PMR_QCPT
+	output << schedule.gamma[temperature] << ',';
+#endif
+	output << schedule.tau[temperature] << ',' << measurement << ',' << updates << ','
+		<< trajectory_id << ',' << last_measurement_sgn;
+	for(int k=0;k<N_all_observables;k++)
+		output << ',' << last_measurement[k] << ',' << last_measurement[k]*last_measurement_sgn;
 	output << ',' << elapsed_seconds << '\n';
 }
 
@@ -399,9 +436,18 @@ int main(int argc, char** argv){
 	int ladder_rank; MPI_Comm_rank(ladder_comm,&ladder_rank);
 	std::ofstream timeseries_file;
 	if(!options.timeseries_prefix.empty() && mpi_rank==0){
-		timeseries_file.open(options.timeseries_prefix.c_str());
+		bool append = options.resume && file_has_content(options.timeseries_prefix);
+		timeseries_file.open(options.timeseries_prefix.c_str(),append ? std::ios::app : std::ios::out);
 		if(!timeseries_file){ std::cerr << "Cannot open timeseries output: " << options.timeseries_prefix << '\n'; MPI_Abort(MPI_COMM_WORLD,2); }
-		write_timeseries_header(timeseries_file);
+		if(!append) write_timeseries_header(timeseries_file);
+	}
+	std::ofstream stream_timeseries_file;
+	if(!options.stream_timeseries_prefix.empty()){
+		std::string name = stream_timeseries_name(options.stream_timeseries_prefix,mpi_rank);
+		bool append = options.resume && file_has_content(name);
+		stream_timeseries_file.open(name.c_str(),append ? std::ios::app : std::ios::out);
+		if(!stream_timeseries_file){ std::cerr << "Cannot open stream timeseries output: " << name << '\n'; MPI_Abort(MPI_COMM_WORLD,2); }
+		if(!append) write_stream_timeseries_header(stream_timeseries_file);
 	}
 	uint64_t schedule_hash =
 #ifdef PMR_QCPT
@@ -463,6 +509,9 @@ int main(int argc, char** argv){
 			if(update_number >= static_cast<uint64_t>(Tsteps) &&
 				((update_number-static_cast<uint64_t>(Tsteps)+1) % static_cast<uint64_t>(stepsPerMeasurement) == 0)){
 				measure();
+				if(!options.stream_timeseries_prefix.empty())
+					write_stream_timeseries_row(stream_timeseries_file,ladder,mpi_rank,temperature,
+						schedule,measurement_step+1,update_number+1,trajectory_id,MPI_Wtime()-start_time);
 				if(!options.timeseries_prefix.empty()){
 					std::vector<double> local_signed(N_all_observables,0.0);
 					std::vector<double> reduced(N_all_observables,0.0), reduced_signed(N_all_observables,0.0);
@@ -596,6 +645,7 @@ int main(int argc, char** argv){
 			std::cout << "Parallel tempering completed: " << ntemperatures << " temperatures, " << layout.independent_ladders << " independent ladder(s)\n";
 			if(!options.timeseries_prefix.empty()) timeseries_file.close();
 		}
+		if(!options.stream_timeseries_prefix.empty()) stream_timeseries_file.close();
 		MPI_Comm_free(&ladder_comm); MPI_Comm_free(&temperature_comm); divdiff_clear_up(); MPI_Finalize(); return 0;
 	}catch(const std::exception& error){
 		std::cerr << "MPI rank " << mpi_rank << " error: " << error.what() << '\n';

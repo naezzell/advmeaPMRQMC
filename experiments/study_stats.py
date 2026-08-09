@@ -282,15 +282,25 @@ def parse_trace(path: Path) -> List[Dict[str, float]]:
     return output
 
 
-def select_target_rows(rows: Sequence[Mapping[str, float]], planned: Mapping[str, str]) -> List[Mapping[str, float]]:
+def split_parameter_points(rows: Sequence[Mapping[str, float]],
+                           planned: Mapping[str, str]) -> List[Tuple[Dict, List[Mapping[str, float]]]]:
+    """Preserve every stationary PT/QCPT slot as a production marginal."""
     method = planned["method"]
-    if method == "qcpt" and rows and "slot" in rows[0]:
-        target = max(int(float(row["slot"])) for row in rows)
-        return [row for row in rows if int(float(row["slot"])) == target]
-    if method == "beta_pt" and rows and "temperature" in rows[0]:
-        target = max(int(float(row["temperature"])) for row in rows)
-        return [row for row in rows if int(float(row["temperature"])) == target]
-    return list(rows)
+    coordinate = "slot" if method == "qcpt" else "temperature" if method == "beta_pt" else None
+    if coordinate is None or not rows or coordinate not in rows[0]:
+        return [({"point": 0, "beta": float(planned["beta"]),
+                  "lambda": float(planned["lambda"])}, list(rows))]
+    grouped = {}
+    for row in rows:
+        point = int(float(row[coordinate]))
+        grouped.setdefault(point, []).append(row)
+    output = []
+    for point, point_rows in sorted(grouped.items()):
+        first = point_rows[0]
+        gamma = float(first["gamma"]) if method == "qcpt" else float(planned["lambda"])
+        output.append(({"point": point, coordinate: point, "beta": float(first["beta"]),
+                        "lambda": gamma}, point_rows))
+    return output
 
 
 def relative_error(result: Mapping[str, float]) -> float:
@@ -309,24 +319,8 @@ PRECISION_TARGETS = {
 }
 
 
-def analyze_run(run_directory: Path) -> Dict:
-    manifest = json.loads((run_directory / "manifest.json").read_text())
-    summary = json.loads((run_directory / "summary.json").read_text())
-    planned = manifest["planned"]
-    trace_paths = sorted(run_directory.glob("trace*.csv"))
-    rows = []
-    for path in trace_paths:
-        parsed = parse_trace(path)
-        if path.name != "trace.csv":
-            stream_name = path.stem.replace("trace_", "")
-            for row in parsed:
-                row.setdefault("stream", stream_name)
-        rows.extend(parsed)
-    rows = select_target_rows(rows, planned)
-    if not rows:
-        result = {"run_id": planned["run_id"], "status": "no_trace", "analysis_pass": False}
-        study.write_json(run_directory / "analysis.json", result)
-        return result
+def analyze_point(rows: Sequence[Mapping[str, float]], planned: Mapping[str, str],
+                  summary: Mapping, coordinate: Mapping) -> Dict:
     streams = split_streams(rows)
     energy_column = "obs_2"
     diagnostics = []
@@ -345,7 +339,7 @@ def analyze_run(run_directory: Path) -> Dict:
     drift = drift_test(chain_ratios)
     valid_iats = finite(item["autocorrelation"]["iat"] for item in diagnostics)
     block_length = max(1, int(math.ceil(10 * max(valid_iats)))) if valid_iats else 1
-    derived = joint_block_jackknife(rows, float(planned["beta"]), int(planned["L"]) ** 2,
+    derived = joint_block_jackknife(rows, float(coordinate["beta"]), int(planned["L"]) ** 2,
                                     block_length)
     protocol_quantities = (["energy_density", "specific_heat_density"]
                            if planned["protocol"] == "cheap" else
@@ -362,11 +356,10 @@ def analyze_run(run_directory: Path) -> Dict:
                      total_effective >= 400 and all(precision.values()))
     wall = float(summary.get("timings", {}).get("simulation", float("nan")))
     ranks = 4
-    result = {
-        "run_id": planned["run_id"], "status": "analyzed", "method": planned["method"],
+    return {
+        **coordinate, "run_id": planned["run_id"], "status": "analyzed", "method": planned["method"],
         "protocol": planned["protocol"], "L": int(planned["L"]),
-        "lambda": float(planned["lambda"]), "beta": float(planned["beta"]),
-        "beta_over_L": float(planned["beta_over_L"]), "seed": int(planned["seed"]),
+        "beta_over_L": float(coordinate["beta"]) / int(planned["L"]), "seed": int(planned["seed"]),
         "tuning": planned["tuning"] == "True", "streams": len(streams),
         "rhat": rhat, "drift": drift, "diagnostics": diagnostics,
         "effective_samples": total_effective, "block_length": block_length,
@@ -375,22 +368,57 @@ def analyze_run(run_directory: Path) -> Dict:
         "core_hours": wall * ranks / 3600.0 if math.isfinite(wall) else float("nan"),
         "ess_per_core_hour": total_effective / (wall * ranks / 3600.0)
         if math.isfinite(wall) and wall > 0 else float("nan"),
-        "trace_paths": [str(path) for path in trace_paths],
+    }
+
+
+def analyze_run(run_directory: Path) -> Dict:
+    manifest = json.loads((run_directory / "manifest.json").read_text())
+    summary = json.loads((run_directory / "summary.json").read_text())
+    planned = manifest["planned"]
+    # Independent stream files are canonical for convergence diagnostics.  The
+    # rank-averaged compatibility trace is retained for older plotting tools,
+    # but must not be concatenated with streams or it would double-count data.
+    trace_paths = sorted(run_directory.glob("trace_stream.rank*.csv"))
+    if not trace_paths:
+        trace_paths = sorted(run_directory.glob("trace*.csv"))
+    rows = []
+    for path in trace_paths:
+        parsed = parse_trace(path)
+        if path.name != "trace.csv":
+            stream_name = path.stem.replace("trace_", "")
+            for row in parsed:
+                row.setdefault("stream", stream_name)
+        rows.extend(parsed)
+    if not rows:
+        result = {"run_id": planned["run_id"], "status": "no_trace", "analysis_pass": False,
+                  "points": [], "trace_paths": [str(path) for path in trace_paths]}
+        study.write_json(run_directory / "analysis.json", result)
+        return result
+    points = [analyze_point(point_rows, planned, summary, coordinate)
+              for coordinate, point_rows in split_parameter_points(rows, planned)]
+    result = {
+        "run_id": planned["run_id"], "status": "analyzed", "method": planned["method"],
+        "protocol": planned["protocol"], "L": int(planned["L"]), "seed": int(planned["seed"]),
+        "analysis_pass": bool(points) and all(point["analysis_pass"] for point in points),
+        "points": points, "trace_paths": [str(path) for path in trace_paths],
     }
     study.write_json(run_directory / "analysis.json", result)
     return result
 
 
-def flatten_analysis(result: Mapping) -> Dict:
-    row = {key: result.get(key) for key in
-           ("run_id", "status", "method", "protocol", "L", "lambda", "beta",
-            "beta_over_L", "seed", "tuning", "streams", "rhat", "effective_samples",
-            "convergence_pass", "analysis_pass", "wall_seconds", "core_hours",
-            "ess_per_core_hour")}
-    for name, estimate in result.get("derived", {}).items():
-        row[name] = estimate.get("mean")
-        row[name + "_se"] = estimate.get("standard_error")
-    return row
+def flatten_analysis(result: Mapping) -> List[Dict]:
+    output = []
+    for point in result.get("points", []):
+        row = {key: point.get(key) for key in
+               ("run_id", "status", "method", "protocol", "L", "lambda", "beta",
+                "beta_over_L", "point", "slot", "temperature", "seed", "tuning",
+                "streams", "rhat", "effective_samples", "convergence_pass",
+                "analysis_pass", "wall_seconds", "core_hours", "ess_per_core_hour")}
+        for name, estimate in point.get("derived", {}).items():
+            row[name] = estimate.get("mean")
+            row[name + "_se"] = estimate.get("standard_error")
+        output.append(row)
+    return output
 
 
 def beta_convergence(rows: Sequence[Mapping], quantity: str) -> List[Dict]:
@@ -432,7 +460,7 @@ def analyze_campaign(root: Path) -> None:
         for run_directory in sorted(path for path in runs.iterdir() if path.is_dir()):
             if (run_directory / "manifest.json").exists() and (run_directory / "summary.json").exists():
                 analyses.append(analyze_run(run_directory))
-    flat = [flatten_analysis(result) for result in analyses]
+    flat = [row for result in analyses for row in flatten_analysis(result)]
     study.write_csv(root / "summary.csv", flat)
     study.write_json(root / "summary.json", analyses)
     beta = []

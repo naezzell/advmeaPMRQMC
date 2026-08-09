@@ -26,7 +26,7 @@ to carry into the final report.
 | M00 | Methodology and provenance | ready | `b44818d` | n/a | Protocol and evidence schema defined |
 | H01 | Historical reproduction | planned | pending | pending | — |
 | E02 | Fast FS estimator | planned | pending | pending | — |
-| A03 | Autocorrelation automation | implemented, awaiting traces | this commit | pending | Signed-ratio diagnostics and joint jackknife unit-tested |
+| A03 | Autocorrelation automation | smoke validated | this commit | `STREAM-SMOKE-20260809` | Independent signed stream traces and all-slot QCPT analysis validated |
 | Q04 | QCPT schedule search | planned | pending | pending | — |
 | T05 | Critical TFIM scaling | planned | pending | pending | — |
 | S06 | SSE comparison | planned | pending | pending | — |

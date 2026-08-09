@@ -15,8 +15,9 @@ covariance needed by nonlinear heat-capacity and gap estimators.
 
 - Implementation: `experiments/study_stats.py` (commit containing this note).
 - Deterministic tests: `tests/study_stats_test.py`.
-- Empirical run IDs: none yet; this slice validates analysis mechanics rather
-  than simulation performance.
+- Correctness protocol: `STREAM-SMOKE-20260809`; compact result
+  `results/stream_trace_smoke.json`. This validator predates content-derived
+  campaign run IDs and is not used for a performance claim.
 
 ## Protocol
 
@@ -51,18 +52,28 @@ The core statistical decisions are now machine-readable in each run's
 an implementation result, not evidence that the defaults are efficient for
 TFIM production runs.
 
+The independent-stream output was exercised end-to-end on a two-spin TFIM.
+Fixed PMR at beta 3 and PT at beta 0.25, 0.6, 1.3, and 3 agreed with exact
+diagonalization under the preconfigured `max(0.03, 6 SE)` smoke tolerance. The
+three PT edges had acceptance 0.726, 0.659, and 0.501, with 134 round trips.
+All expected per-rank trace files passed schema checks. This deliberately short
+run validates wiring and gross correctness only; its uncertainty is too large
+for efficiency comparisons.
+
 ## Limitations
 
 - The current analysis uses energy to choose the common block length; advanced
   observables may require a larger observable-specific block length.
 - Per-rank/per-ladder traces are required before multi-stream R-hat and drift
-  gates can be exercised by the production executables.
+  gates can be exercised across four independent production ladders. The trace
+  schema is now emitted, but the campaign-level cross-run gate is pending.
 - Four-chain automatic extension and measurement-interval selection remain to
   be connected to the campaign runner.
 
 ## Report-ready Claims
 
-None; simulation data have not yet been collected.
+None; the smoke data validate trace plumbing but are intentionally too short
+for a performance or physics claim.
 
 ## Open Questions
 
