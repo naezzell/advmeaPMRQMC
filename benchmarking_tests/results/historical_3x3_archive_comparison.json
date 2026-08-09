@@ -2,6 +2,7 @@
   "all_within_three_combined_se": true,
   "archive_csv": "data_plotting_misc/data/advmea_3by3tfim_verify_data.csv",
   "archive_csv_sha256": "939938fc5fb999fc90dac0a1062cbfd6d25c4721ccadec80472e5513a6328bd4",
+  "archive_profile": "three_by_three",
   "campaign_summary": "benchmarking_tests/artifacts/historical_anchors/summary.json",
   "campaign_summary_sha256": "6313f991f7032ecb8bfe08fffdff0f985e3ef05c364d0eb83463b399418cb22c",
   "comparisons": {

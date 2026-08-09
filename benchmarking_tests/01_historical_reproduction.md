@@ -83,6 +83,36 @@ A/B observables, used a different measurement interval and machine, and
 obtained roughly five-to-six times smaller standard errors for the shared
 quantities.
 
+### 4x4 historical representation endpoint pilot
+
+The next staged pilot used the paper's PBC rotated `XX+Z` representation,
+positive-parity restriction, `h=1`, and both diagonal and off-diagonal
+perturbation estimators. One four-chain seed group was run at beta 0.1, 1, and
+4 before spending the full 24-run historical matrix. Run IDs were
+`561575c5085e1fb4`, `60e440b3b6219d00`, and `31aeee8c9776254f`.
+
+| beta | mean q | wall (s) | energy ESS | ESS/core-hour | correlation gate |
+|---:|---:|---:|---:|---:|---|
+| 0.1 | 0.331 | 3.38 | 29,660 | 7,886,053 | pass |
+| 1 | 30.46 | 34.87 | 779 | 20,103 | fail |
+| 4 | 119.09 | 637.38 | 213 | 300 | fail |
+
+For identical update counts, beta 4 is 188 times slower than beta 0.1, has 139
+times less energy ESS, and delivers 26,246 times less ESS/core-hour. R-hat and
+drift pass at all three endpoints (maximum R-hat 1.0082), while blocking fails
+at beta 1 and 4. At beta 4, rank-0 advanced measurement takes 164 seconds, about
+26% of its wall time; low ESS shows that mixing/update cost, not just estimator
+cost, dominates the remaining loss.
+
+The beta 0.1 and 4 shared observables reproduce the exact archived CSV rows:
+all energy, off-diagonal ES, and off-diagonal FS differences are within 1.21
+combined standard errors. The beta-4 ES and FS uncertainties are extremely
+large, so agreement is a correctness check rather than a precision result.
+Machine-readable diagnostics and archive comparisons are in
+`results/historical_4x4_endpoint_pilot.json`,
+`results/historical_4x4_beta0p1_archive_comparison.json`, and
+`results/historical_4x4_beta4_archive_comparison.json`.
+
 ## Limitations
 
 - The inverse-variance line is a preliminary combination of independently
@@ -96,6 +126,9 @@ quantities.
 - Historical and current resource counts are not a matched time-to-precision
   protocol, so their raw ratios must not be reported as estimator or sampler
   speedups.
+- The 4x4 endpoint pilot has only one four-chain seed group per beta. It
+  establishes a computational cliff and correctness at archived endpoints,
+  but not a bootstrap-qualified speedup.
 
 ## Report-ready Claims
 
@@ -107,8 +140,16 @@ row within 0.55 combined standard errors or less. Per-seed-group ES and FS need
 more samples than energy and heat capacity to meet their production precision
 target.
 
+For the historical 4x4 rotated/parity representation at fixed update count,
+raising beta from 0.1 to 4 reduces energy ESS/core-hour by more than four orders
+of magnitude. The current implementation reproduces archived energy and
+off-diagonal susceptibility estimates at beta 0.1 and 4, but the beta-4
+advanced estimates remain unresolved.
+
 ## Open Questions
 
 - Does extending production alone resolve ES/FS precision, or does their
   measurement interval need retuning?
 - Should the final ensemble estimate use a joint 16-chain blocked jackknife?
+- Does standard `ZZ+X` avoid the rotated/parity mixing cliff at the same 4x4
+  coordinates, and how much can beta/QCPT recover?
