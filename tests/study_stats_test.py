@@ -3,6 +3,7 @@
 import math
 import random
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -77,6 +78,45 @@ class StudyStatsTest(unittest.TestCase):
         self.assertEqual([point[0]["slot"] for point in points], [0, 1, 2])
         self.assertEqual([point[0]["lambda"] for point in points], [0.0, 1.5, 3.0])
         self.assertEqual([point[0]["beta"] for point in points], [1.0, 2.0, 4.0])
+
+    def test_schedule_selection_enforces_transport_gates(self):
+        records = []
+        for schedule, acceptance, score in (("good", 0.2, 10.0), ("stuck", 0.1, 100.0)):
+            for seed in (1, 2, 3, 4):
+                records.append({
+                    "run_id": f"{schedule}-{seed}", "L": 4, "target_lambda": 3.044,
+                    "target_beta": 8.0, "protocol": "cheap", "representation": "standard",
+                    "periodic": True, "move": "none", "schedule_name": schedule, "seed": seed,
+                    "target_ess_per_core_hour": score, "sweep_ess_per_core_hour": score * 2,
+                    "worst_edge_acceptance": acceptance, "round_trips": 1,
+                    "qmax_achieved": False, "sign_gate": True, "convergence_gate": True,
+                })
+        ranked = stats.rank_schedule_records(records)
+        by_name = {row["schedule_name"]: row for row in ranked}
+        self.assertTrue(by_name["good"]["eligible"])
+        self.assertTrue(by_name["good"]["selected"])
+        self.assertFalse(by_name["stuck"]["eligible"])
+        self.assertFalse(by_name["stuck"]["selected"])
+
+    def test_selected_schedule_uses_disjoint_production_seeds(self):
+        simulation = {"Tsteps": 10, "steps": 100, "steps_per_measurement": 1,
+                      "qmax": 64, "nbins": 10, "max_wall_seconds": 100}
+        template = stats.study.make_plan_row(
+            "abc", "tuning", "qcpt", "cheap", 4, 3.044, 8.0, True,
+            "standard", 0, 1100, True, simulation, schedule_name="pure_beta")
+        winner = {"selected": True, "schedule_name": "pure_beta", "L": 4,
+                  "target_lambda": 3.044, "target_beta": 8.0, "protocol": "cheap",
+                  "representation": "standard", "move": "none"}
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            stats.study.write_csv(root / "plan.csv", [template])
+            stats.study.write_json(root / "campaign_manifest.json", {
+                "config": {"production_seeds": [5100, 6100, 7100, 8100]}
+            })
+            production = stats.selected_production_rows(root, [winner])
+        self.assertEqual(sorted(int(row["seed"]) for row in production), [5100, 6100, 7100, 8100])
+        self.assertTrue(all(row["tuning"] == "False" for row in production))
+        self.assertTrue({row["run_id"] for row in production}.isdisjoint({template["run_id"]}))
 
 
 if __name__ == "__main__":

@@ -359,6 +359,7 @@ def analyze_point(rows: Sequence[Mapping[str, float]], planned: Mapping[str, str
     return {
         **coordinate, "run_id": planned["run_id"], "status": "analyzed", "method": planned["method"],
         "protocol": planned["protocol"], "L": int(planned["L"]),
+        "schedule_name": planned.get("schedule_name", ""), "move": planned.get("move", "none"),
         "beta_over_L": float(coordinate["beta"]) / int(planned["L"]), "seed": int(planned["seed"]),
         "tuning": planned["tuning"] == "True", "streams": len(streams),
         "rhat": rhat, "drift": drift, "diagnostics": diagnostics,
@@ -368,7 +369,31 @@ def analyze_point(rows: Sequence[Mapping[str, float]], planned: Mapping[str, str
         "core_hours": wall * ranks / 3600.0 if math.isfinite(wall) else float("nan"),
         "ess_per_core_hour": total_effective / (wall * ranks / 3600.0)
         if math.isfinite(wall) and wall > 0 else float("nan"),
+        "mean_sign": mean([float(row["sign"]) for row in rows]),
     }
+
+
+def tempering_metadata(run_directory: Path) -> Dict:
+    swaps_path = run_directory / "tempered_swaps.csv"
+    flow_path = run_directory / "tempered_flow.csv"
+    result = {"worst_edge_acceptance": float("nan"), "round_trips": 0,
+              "qmax_achieved": False, "mean_q": float("nan"),
+              "crossed_weight_seconds": float("nan")}
+    if swaps_path.exists():
+        with swaps_path.open(newline="") as stream:
+            acceptances = [float(row["acceptance"]) for row in csv.DictReader(stream)]
+        result["worst_edge_acceptance"] = min(acceptances) if acceptances else float("nan")
+    if flow_path.exists():
+        with flow_path.open(newline="") as stream:
+            rows = list(csv.DictReader(stream))
+        if rows:
+            result.update({
+                "round_trips": int(rows[0]["round_trips"]),
+                "qmax_achieved": bool(int(rows[0]["qmax_achieved"])),
+                "mean_q": float(rows[0]["mean_q"]),
+                "crossed_weight_seconds": float(rows[0]["crossed_weight_seconds"]),
+            })
+    return result
 
 
 def analyze_run(run_directory: Path) -> Dict:
@@ -401,6 +426,12 @@ def analyze_run(run_directory: Path) -> Dict:
         "protocol": planned["protocol"], "L": int(planned["L"]), "seed": int(planned["seed"]),
         "analysis_pass": bool(points) and all(point["analysis_pass"] for point in points),
         "points": points, "trace_paths": [str(path) for path in trace_paths],
+        "tempering": tempering_metadata(run_directory) if planned["method"] in ("beta_pt", "qcpt") else {},
+        "schedule_name": planned.get("schedule_name", ""), "move": planned.get("move", "none"),
+        "representation": planned.get("representation", "standard"),
+        "periodic": planned.get("periodic", "True") == "True",
+        "target_lambda": float(planned["lambda"]), "target_beta": float(planned["beta"]),
+        "tuning": planned.get("tuning", "False") == "True",
     }
     study.write_json(run_directory / "analysis.json", result)
     return result
@@ -412,6 +443,7 @@ def flatten_analysis(result: Mapping) -> List[Dict]:
         row = {key: point.get(key) for key in
                ("run_id", "status", "method", "protocol", "L", "lambda", "beta",
                 "beta_over_L", "point", "slot", "temperature", "seed", "tuning",
+                "schedule_name", "move", "mean_sign",
                 "streams", "rhat", "effective_samples", "convergence_pass",
                 "analysis_pass", "wall_seconds", "core_hours", "ess_per_core_hour")}
         for name, estimate in point.get("derived", {}).items():
@@ -419,6 +451,115 @@ def flatten_analysis(result: Mapping) -> List[Dict]:
             row[name + "_se"] = estimate.get("standard_error")
         output.append(row)
     return output
+
+
+def schedule_candidate_records(analyses: Sequence[Mapping]) -> List[Dict]:
+    records = []
+    for result in analyses:
+        if result.get("method") != "qcpt" or not result.get("tuning") or not result.get("points"):
+            continue
+        points = result["points"]
+        endpoint = max(points, key=lambda point: int(point["point"]))
+        core_hours = endpoint.get("core_hours", float("nan"))
+        sweep_ess = sum(float(point.get("effective_samples", 0.0)) for point in points)
+        tempering = result.get("tempering", {})
+        records.append({
+            "run_id": result["run_id"], "L": result["L"],
+            "target_lambda": result["target_lambda"], "target_beta": result["target_beta"],
+            "protocol": result["protocol"], "representation": result["representation"],
+            "periodic": result["periodic"], "move": result["move"],
+            "schedule_name": result["schedule_name"], "seed": result["seed"],
+            "target_ess_per_core_hour": endpoint.get("ess_per_core_hour", float("nan")),
+            "sweep_ess_per_core_hour": sweep_ess / core_hours
+            if math.isfinite(float(core_hours)) and float(core_hours) > 0 else float("nan"),
+            "worst_edge_acceptance": tempering.get("worst_edge_acceptance", float("nan")),
+            "round_trips": tempering.get("round_trips", 0),
+            "qmax_achieved": tempering.get("qmax_achieved", False),
+            "sign_gate": all(float(point.get("mean_sign", 0.0)) > 0 for point in points),
+            "convergence_gate": all(bool(point.get("convergence_pass")) for point in points),
+        })
+    return records
+
+
+def rank_schedule_records(records: Sequence[Mapping], minimum_seeds: int = 4,
+                          minimum_acceptance: float = 0.15) -> List[Dict]:
+    candidates = {}
+    candidate_fields = ("L", "target_lambda", "target_beta", "protocol", "representation",
+                        "periodic", "move", "schedule_name")
+    for record in records:
+        key = tuple(record[field] for field in candidate_fields)
+        candidates.setdefault(key, []).append(record)
+    ranked = []
+    for key, runs in candidates.items():
+        acceptances = finite(float(run["worst_edge_acceptance"]) for run in runs)
+        target_scores = finite(float(run["target_ess_per_core_hour"]) for run in runs)
+        sweep_scores = finite(float(run["sweep_ess_per_core_hour"]) for run in runs)
+        eligible = (len({run["seed"] for run in runs}) >= minimum_seeds and
+                    len(target_scores) == len(runs) and bool(acceptances) and
+                    min(acceptances) >= minimum_acceptance and
+                    sum(int(run["round_trips"]) for run in runs) > 0 and
+                    not any(bool(run["qmax_achieved"]) for run in runs) and
+                    all(bool(run["sign_gate"]) and bool(run["convergence_gate"]) for run in runs))
+        row = dict(zip(candidate_fields, key))
+        row.update({
+            "runs": len(runs), "seeds": ";".join(str(seed) for seed in sorted({run["seed"] for run in runs})),
+            "run_ids": ";".join(sorted(str(run["run_id"]) for run in runs)),
+            "worst_edge_acceptance": min(acceptances) if acceptances else float("nan"),
+            "round_trips": sum(int(run["round_trips"]) for run in runs),
+            "median_target_ess_per_core_hour": statistics.median(target_scores) if target_scores else float("nan"),
+            "median_sweep_ess_per_core_hour": statistics.median(sweep_scores) if sweep_scores else float("nan"),
+            "eligible": eligible, "selected": False,
+        })
+        ranked.append(row)
+    comparison_fields = candidate_fields[:-1]
+    comparison_groups = {}
+    for row in ranked:
+        comparison_groups.setdefault(tuple(row[field] for field in comparison_fields), []).append(row)
+    for group in comparison_groups.values():
+        survivors = [row for row in group if row["eligible"]]
+        if survivors:
+            max(survivors, key=lambda row: (row["median_target_ess_per_core_hour"],
+                                            row["median_sweep_ess_per_core_hour"]))["selected"] = True
+    return sorted(ranked, key=lambda row: tuple(str(row[field]) for field in comparison_fields) +
+                  (not row["selected"], -float(row["median_target_ess_per_core_hour"])
+                   if math.isfinite(float(row["median_target_ess_per_core_hour"])) else float("inf")))
+
+
+def selected_production_rows(root: Path, ranking: Sequence[Mapping]) -> List[Dict[str, str]]:
+    selected = [row for row in ranking if row.get("selected")]
+    if not selected or not (root / "plan.csv").exists():
+        return []
+    plan = study.read_csv(root / "plan.csv")
+    campaign_manifest = json.loads((root / "campaign_manifest.json").read_text())
+    production_seeds = campaign_manifest["config"].get(
+        "production_seeds", [5100, 6100, 7100, 8100]
+    )
+    rows = []
+    for winner in selected:
+        template = next((row for row in plan
+                         if row["method"] == "qcpt" and row["tuning"] == "True" and
+                         row["schedule_name"] == str(winner["schedule_name"]) and
+                         int(row["L"]) == int(winner["L"]) and
+                         float(row["lambda"]) == float(winner["target_lambda"]) and
+                         float(row["beta"]) == float(winner["target_beta"]) and
+                         row["protocol"] == winner["protocol"] and
+                         row["representation"] == winner["representation"] and
+                         row.get("move", "none") == winner["move"]), None)
+        if template is None:
+            continue
+        simulation = {name: int(template[name]) for name in
+                      ("Tsteps", "steps", "steps_per_measurement", "qmax", "nbins",
+                       "max_wall_seconds")}
+        for seed in production_seeds:
+            rows.append(study.make_plan_row(
+                template["source_commit"], template["campaign"] + "_production", "qcpt",
+                template["protocol"], int(template["L"]), float(template["lambda"]),
+                float(template["beta"]), template["periodic"] == "True",
+                template["representation"], int(template["parity"]), int(seed), False,
+                simulation, schedule_name=template["schedule_name"], move=template.get("move", "none"),
+            ))
+    unique = {row["run_id"]: row for row in rows}
+    return sorted(unique.values(), key=lambda row: row["run_id"])
 
 
 def beta_convergence(rows: Sequence[Mapping], quantity: str) -> List[Dict]:
@@ -467,4 +608,8 @@ def analyze_campaign(root: Path) -> None:
     for quantity in PRECISION_TARGETS:
         beta.extend(beta_convergence(flat, quantity))
     study.write_json(root / "beta_convergence.json", beta)
+    schedule_ranking = rank_schedule_records(schedule_candidate_records(analyses))
+    study.write_csv(root / "schedule_ranking.csv", schedule_ranking)
+    study.write_json(root / "schedule_ranking.json", schedule_ranking)
+    study.write_csv(root / "production_plan.csv", selected_production_rows(root, schedule_ranking))
     print(f"analyzed {len(analyses)} runs; {sum(bool(result.get('analysis_pass')) for result in analyses)} passed")

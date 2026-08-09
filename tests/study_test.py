@@ -79,7 +79,7 @@ class StudyTest(unittest.TestCase):
 
     def test_committed_campaign_matrices_have_unique_ids(self):
         configs = ROOT / "benchmarking_tests" / "configs"
-        expected = {"desktop_smoke.json": 1, "desktop_pilot.json": 240,
+        expected = {"desktop_smoke.json": 1, "desktop_pilot.json": 264,
                     "historical_anchors.json": 44, "ceiling_probes.json": 20,
                     "model_move_controls.json": 96}
         for name, count in expected.items():

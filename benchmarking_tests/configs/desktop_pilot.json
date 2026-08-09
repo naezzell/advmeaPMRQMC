@@ -2,6 +2,7 @@
   "campaign": "critical_tfim_desktop_pilot",
   "methods": ["current_fixed"],
   "seeds": [1000, 2000, 3000, 4000],
+  "production_seeds": [5100, 6100, 7100, 8100],
   "simulation": {
     "Tsteps": 100000,
     "steps": 1000000,
@@ -28,7 +29,7 @@
       "methods": ["beta_pt", "qcpt"],
       "schedules": ["pure_beta", "diagonal_p0_5", "diagonal_p1", "diagonal_p2", "classical_dogleg"],
       "protocols": ["cheap"],
-      "seeds": [1100, 2100],
+      "seeds": [1100, 2100, 3100, 4100],
       "tuning": true
     }
   ]
