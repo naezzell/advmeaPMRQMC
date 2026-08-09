@@ -22,6 +22,7 @@ plot = load("plot_pt_convergence_gap", "experiments/plot_pt_convergence_gap.py")
 loop = load("pt_benchmark_loop", "experiments/pt_benchmark_loop.py")
 minimal = load("validate_pt_minimal", "experiments/validate_pt_minimal.py")
 qcpt = load("validate_qcpt", "experiments/validate_qcpt.py")
+edge = load("validate_qcpt_edge_cases", "experiments/validate_qcpt_edge_cases.py")
 
 
 class SignedTraceTest(unittest.TestCase):
@@ -103,6 +104,18 @@ class QCPTValidationTest(unittest.TestCase):
                            cwd=directory, check=True, stdout=subprocess.DEVNULL)
             generated = (directory / "hamiltonian.hpp").read_text()
             self.assertIn('std::bitset<Nop>("101")', generated)
+
+    def test_uniform_gamma_expansion_order_oracle(self):
+        zero = edge.exact_values(edge.FIXED_TF, edge.GAMMA_TF, 0.9, 0.0)
+        finite = edge.exact_values(edge.FIXED_TF, edge.GAMMA_TF, 0.9, 1.0)
+        self.assertAlmostEqual(zero["q"], 0.0, places=13)
+        self.assertGreater(finite["q"], 0.0)
+
+    def test_edge_case_paths_have_distinct_coordinates(self):
+        self.assertEqual(len(edge.PURE_BETA), 4)
+        self.assertEqual(len(edge.PURE_GAMMA), 4)
+        self.assertEqual(len({beta for beta, _ in edge.PURE_GAMMA}), 1)
+        self.assertEqual(len({gamma for _, gamma in edge.PURE_BETA}), 1)
 
 
 if __name__ == "__main__":

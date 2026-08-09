@@ -400,7 +400,15 @@ int main(int argc, char** argv){
 		divdiff_init();
 		divdiff dd(q+4,500), ddfs(q+4,500), dd1(q+4,500), dd2(q+4,500);
 		d=&dd; dfs=&ddfs; ds1=&dd1; ds2=&dd2;
+#ifdef PMR_QCPT
 		configure_run_parameters(schedule.beta[temperature],schedule.tau[temperature],schedule.gamma[temperature]);
+#else
+		// A legacy beta-only schedule has no gamma coordinate.  When the
+		// generated Hamiltonian is split, retain the compile-time gamma from
+		// parameters.hpp rather than interpreting the schedule's compatibility
+		// placeholder as a physical value.
+		configure_run_parameters(schedule.beta[temperature],schedule.tau[temperature]);
+#endif
 		configure_valid_observables();
 		init_rng();
 		bool resume = false;
