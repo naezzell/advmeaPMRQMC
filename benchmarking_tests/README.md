@@ -23,7 +23,7 @@ to carry into the final report.
 
 | ID | Topic | Status | Commit | Run IDs | Headline result |
 |---|---|---|---|---|---|
-| M00 | Methodology and provenance | ready | pending | n/a | Protocol and evidence schema defined |
+| M00 | Methodology and provenance | ready | `b44818d` | n/a | Protocol and evidence schema defined |
 | H01 | Historical reproduction | planned | pending | pending | — |
 | E02 | Fast FS estimator | planned | pending | pending | — |
 | A03 | Autocorrelation automation | planned | pending | pending | — |

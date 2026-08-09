@@ -1,0 +1,24 @@
+{
+  "campaign": "critical_tfim_ceiling_probes",
+  "methods": ["current_fixed"],
+  "seeds": [1200],
+  "simulation": {
+    "Tsteps": 100000,
+    "steps": 1000000,
+    "steps_per_measurement": 100,
+    "qmax": 16384,
+    "nbins": 100,
+    "max_wall_seconds": 1800
+  },
+  "matrices": [
+    {
+      "L": [10, 12, 16, 24, 32],
+      "lambda": 3.044,
+      "beta_over_L": [1.0, 2.0],
+      "periodic": true,
+      "representation": "standard",
+      "protocols": ["cheap", "advanced"],
+      "tuning": true
+    }
+  ]
+}

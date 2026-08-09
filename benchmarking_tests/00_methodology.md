@@ -37,6 +37,12 @@ revision, compiler, Python, MPI, CPU, command, and random seeds of a run.
 7. Promote a speedup only when a bootstrap 95% interval for the median
    ESS-rate or time-to-precision ratio excludes one.
 
+Planning and execution are separate operations.  `study.py plan` expands a
+human-readable JSON configuration into an immutable CSV whose run IDs hash the
+model, physical parameters, method, measurements, schedule, simulation budget,
+seed, and source commit.  Execution refuses a plan from a different commit.
+This prevents a resumed campaign from silently mixing implementations.
+
 ### Default statistical gates
 
 | Quantity | Default gate |
@@ -57,6 +63,12 @@ precision target.
 ## Results
 
 This note defines the protocol; it contains no performance result.
+
+The first dry planning test generated the critical desktop matrix without
+running QMC.  It exposed a control-count bug: schedule candidates from a mixed
+beta-PT/QCPT matrix were initially applied to beta-only PT even though those
+names do not alter its geometric schedule.  The resulting duplicate run IDs
+were rejected, and the expansion now gives beta-only PT exactly one schedule.
 
 ## Interpretation
 
