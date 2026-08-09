@@ -113,6 +113,29 @@ Machine-readable diagnostics and archive comparisons are in
 `results/historical_4x4_beta0p1_archive_comparison.json`, and
 `results/historical_4x4_beta4_archive_comparison.json`.
 
+### 8x8 historical sweep endpoint pilot
+
+A clean, source-hashed pilot then ran the second paper's 8x8 OBC standard TFIM
+at beta 1 and the Gamma-sweep endpoints 0.1 and 1.5. Run IDs were
+`3f8eb4f7d9e79f32` and `bb217af4b694b0eb`, each with four chains, 100,000
+warmup and 1,000,000 production updates per chain, interval 100, and all
+standard observables.
+
+| Gamma | mean q | wall (s) | energy IAT | ESS/core-hour | R-hat | correlation |
+|---:|---:|---:|---:|---:|---:|---|
+| 0.1 | 0.19 | 4.01 | 6.23 | 1,392,060 | 1.0004 | pass |
+| 1.5 | 44.93 | 202.15 | 33.62 | 4,864 | 1.0181 | fail |
+
+The high-Gamma endpoint is 50.5x slower and supplies 286x less energy
+ESS/core-hour. Both endpoints pass the archived three-combined-SE checks for
+energy, specific heat, off-diagonal ES, and off-diagonal FS. The largest
+standardized archived difference is 1.63 at Gamma 0.1 and 2.12 at Gamma 1.5.
+This is correctness with limited precision: low-Gamma FS is unresolved and
+slightly negative, while the high-Gamma run fails both thermalization and
+correlation gates. Compact evidence is in
+`results/historical_8x8_endpoint_pilot.json` and the two corresponding archive
+comparison JSON files.
+
 ## Limitations
 
 - The inverse-variance line is a preliminary combination of independently
@@ -129,6 +152,10 @@ Machine-readable diagnostics and archive comparisons are in
 - The 4x4 endpoint pilot has only one four-chain seed group per beta. It
   establishes a computational cliff and correctness at archived endpoints,
   but not a bootstrap-qualified speedup.
+- The 8x8 endpoint pilot likewise has one seed group per Gamma and does not yet
+  include the intermediate 0.5 and 1.0 sweep points. The clean-worktree gate
+  correctly stopped their launch once these new evidence files made the tree
+  dirty; they will be replanned after this commit.
 
 ## Report-ready Claims
 
@@ -145,6 +172,12 @@ raising beta from 0.1 to 4 reduces energy ESS/core-hour by more than four orders
 of magnitude. The current implementation reproduces archived energy and
 off-diagonal susceptibility estimates at beta 0.1 and 4, but the beta-4
 advanced estimates remain unresolved.
+
+At 8x8 OBC and beta 1, the current implementation reproduces the archived
+standard observables at Gamma 0.1 and 1.5 within three combined standard
+errors. This finite-temperature sweep is computationally feasible on the
+desktop, but the high-Gamma endpoint and advanced-observable precision do not
+pass production gates.
 
 ## Open Questions
 
