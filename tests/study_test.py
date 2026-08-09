@@ -89,7 +89,8 @@ class StudyTest(unittest.TestCase):
         configs = ROOT / "benchmarking_tests" / "configs"
         expected = {"desktop_smoke.json": 1, "desktop_pilot.json": 264,
                     "historical_anchors.json": 44, "ceiling_probes.json": 20,
-                    "model_move_controls.json": 100, "estimator_microbenchmark.json": 48}
+                    "model_move_controls.json": 100, "estimator_microbenchmark.json": 48,
+                    "qcpt_schedule_smoke.json": 20}
         for name, count in expected.items():
             config = json.loads((configs / name).read_text())
             rows = study.expand_matrix(config, "test-commit")

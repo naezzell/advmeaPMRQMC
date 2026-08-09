@@ -20,6 +20,9 @@ metrics must remain visible.
 - Desktop tuning matrix: `configs/desktop_pilot.json`, which declares the
   production grid `Gamma={2.8,3.044,3.2}` and `beta/L={0.5,1,2}` and selects
   by objective-grid ESS/core-hour.
+- Exact smoke matrix: `configs/qcpt_schedule_smoke.json`; L=2, Gamma=1,
+  beta=2, five schedules, four tuning seeds, and a declared eight-coordinate
+  `(Gamma,beta/L)` sweep objective.
 - Empirical run IDs: pending.
 
 ## Protocol
