@@ -68,6 +68,13 @@ production gates without any tolerance change: R-hat was 1.027, total ESS was
 were missed. The adaptive decision therefore doubles both warmup and sampling.
 The compact record is `results/desktop_smoke_aee1cea9a2fae828.json`.
 
+Three automatic successor rounds reached 800 warmup and 8000 sampling updates
+per chain (`b163f97dd43e5b40`). ESS rose from 205 to 1280 and the energy-density
+estimate moved from -0.743(36) to -0.857(19), close to the exact -0.8630.
+Nevertheless, R-hat stayed above threshold (1.051 in the largest run) and the
+0.1% energy precision target remained far away, so all four runs correctly
+remain failed. See `results/adaptive_smoke_series.json`.
+
 ## Limitations
 
 - The current analysis uses energy to choose the common block length; advanced
@@ -92,3 +99,6 @@ for a performance or physics claim.
 - How stable are automated choices across independent tuning seeds?
 - Should the production block length be the maximum IAT over all requested
   observables rather than the energy IAT alone?
+- Why does rank-normalized R-hat remain above 1.01 for this small discrete
+  model even after the energy mean approaches the exact result? Compare raw,
+  folded, and bulk/tail R-hat implementations before production.

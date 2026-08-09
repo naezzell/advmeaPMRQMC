@@ -26,7 +26,7 @@ to carry into the final report.
 | M00 | Methodology and provenance | ready | `b44818d` | n/a | Protocol and evidence schema defined |
 | H01 | Historical reproduction | planned | pending | pending | — |
 | E02 | Fast FS estimator | planned | pending | pending | — |
-| A03 | Autocorrelation automation | adaptive smoke failed as expected | this commit | `aee1cea9a2fae828` | Exact gate passed; R-hat/ESS/blocks/precision triggered extension |
+| A03 | Autocorrelation automation | four adaptive rounds inconclusive | this commit | `aee1cea9a2fae828`, `9d3f3c6f3c092919`, `a40a5b4376d6c288`, `b163f97dd43e5b40` | ESS improved 6.2x; R-hat and precision still failed |
 | Q04 | QCPT schedule search | selector implemented | this commit | pending | Four-seed transport gates and separate production seeds |
 | T05 | Critical TFIM scaling | planned | pending | pending | — |
 | S06 | SSE comparison | adapter ready, image build blocked | this commit | pending | ALPS normalization and source/base pins tested |
