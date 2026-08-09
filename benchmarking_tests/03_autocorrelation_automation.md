@@ -92,6 +92,15 @@ most 1.0003, while the old method returned about 1.04. A regression test now
 covers identical discrete chains. Trace schema 3 also records instantaneous
 `expansion_order`, allowing the requested q convergence gate on all new runs.
 
+Per-run analysis is now content-addressed by SHA-256 over the manifest,
+simulator summary, every canonical trace, analysis schema, and the analysis,
+campaign, and exact-diagonalization sources. On the 12-run model-control
+campaign (276,615,221 trace bytes), a full analysis took 263.04 seconds and an
+unchanged cached repeat took 1.06 seconds, an observed 248x ratio. A verification
+repeat took 0.90 seconds and left `summary.json` byte-identical (SHA-256
+`cdef59e91fc3be5a178fb462d8a1ad055cdb66e706504269b2ece29c302f0371`).
+See `results/analysis_cache_benchmark.json`.
+
 ## Limitations
 
 - The current analysis uses energy to choose the common block length; advanced
@@ -104,15 +113,17 @@ covers identical discrete chains. Trace schema 3 also records instantaneous
 - For this tiny smoke, simulator compilation took about 10.9 seconds while the
   simulator-reported wall time was 0.11 seconds. Build caching is needed before
   end-to-end timings on short jobs are interpretable.
-- Campaign reanalysis currently recomputes every unchanged trace. In the 12-run
-  model-control campaign, Python diagnostics took minutes while individual
-  standard-representation simulations took about 12 seconds. Analysis results
-  need trace-checksum-based caching and vectorized/FFT autocorrelation kernels.
+- Cached analysis still reads and hashes every trace byte; a sidecar Merkle
+  manifest could reduce even that cost on cluster archives while retaining
+  content verification. Uncached diagnostics still need vectorized/FFT
+  autocorrelation kernels.
 
 ## Report-ready Claims
 
-None; the smoke data validate trace plumbing but are intentionally too short
-for a performance or physics claim.
+The content-addressed cache preserves byte-identical campaign summaries while
+making unchanged reanalysis effectively instantaneous relative to the original
+Python diagnostic pass. The single uncached timing is not used as a
+bootstrap-qualified numerical speedup claim.
 
 ## Open Questions
 

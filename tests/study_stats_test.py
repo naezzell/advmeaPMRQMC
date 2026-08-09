@@ -208,6 +208,31 @@ class StudyStatsTest(unittest.TestCase):
         self.assertEqual(int(extensions[0]["steps"]), 200)
         self.assertEqual(decisions[0]["status"], "planned")
 
+    def test_analysis_fingerprint_tracks_trace_and_analyzer_inputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "manifest.json").write_text("manifest")
+            (root / "summary.json").write_text("summary")
+            trace = root / "trace.csv"
+            trace.write_text("first")
+            first = stats.analysis_fingerprint(root, [trace])
+            trace.write_text("second")
+            second = stats.analysis_fingerprint(root, [trace])
+        self.assertNotEqual(first, second)
+
+    def test_analyze_run_reuses_matching_cached_result(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "manifest.json").write_text('{"planned":{"run_id":"cached"}}')
+            (root / "summary.json").write_text('{}')
+            trace = root / "trace.csv"
+            trace.write_text("not,a,parseable,trace\n")
+            fingerprint = stats.analysis_fingerprint(root, [trace])
+            cached = {"run_id": "cached", "analysis_fingerprint": fingerprint,
+                      "status": "cached-sentinel"}
+            (root / "analysis.json").write_text(__import__("json").dumps(cached))
+            self.assertEqual(stats.analyze_run(root), cached)
+
 
 if __name__ == "__main__":
     unittest.main()

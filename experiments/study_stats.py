@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import math
 import statistics
@@ -29,9 +30,28 @@ OBSERVABLE_INDEX = {
     "hoffdiag_fint": 14,
 }
 
+ANALYSIS_SCHEMA_VERSION = 2
+
 
 def finite(values: Iterable[float]) -> List[float]:
     return [value for value in values if math.isfinite(value)]
+
+
+def analysis_fingerprint(run_directory: Path, trace_paths: Sequence[Path]) -> str:
+    """Hash all inputs that can change a run's statistical analysis."""
+    digest = hashlib.sha256()
+    inputs = [run_directory / "manifest.json", run_directory / "summary.json",
+              Path(__file__), Path(study.__file__), Path(__file__).with_name("exact_diagonalization.py")]
+    for path in inputs + list(trace_paths):
+        digest.update(str(path.name).encode())
+        with path.open("rb") as stream:
+            while True:
+                chunk = stream.read(1024 * 1024)
+                if not chunk:
+                    break
+                digest.update(chunk)
+    digest.update(str(ANALYSIS_SCHEMA_VERSION).encode())
+    return digest.hexdigest()
 
 
 def mean(values: Sequence[float]) -> float:
@@ -498,6 +518,12 @@ def analyze_run(run_directory: Path) -> Dict:
     trace_paths = sorted(run_directory.glob("trace_stream.rank*.csv"))
     if not trace_paths:
         trace_paths = sorted(run_directory.glob("trace*.csv"))
+    fingerprint = analysis_fingerprint(run_directory, trace_paths)
+    cached_path = run_directory / "analysis.json"
+    if cached_path.exists():
+        cached = json.loads(cached_path.read_text())
+        if cached.get("analysis_fingerprint") == fingerprint:
+            return cached
     rows = []
     for path in trace_paths:
         parsed = parse_trace(path)
@@ -508,6 +534,8 @@ def analyze_run(run_directory: Path) -> Dict:
         rows.extend(parsed)
     if not rows:
         result = {"run_id": planned["run_id"], "status": "no_trace", "analysis_pass": False,
+                  "analysis_schema_version": ANALYSIS_SCHEMA_VERSION,
+                  "analysis_fingerprint": fingerprint,
                   "points": [], "trace_paths": [str(path) for path in trace_paths]}
         study.write_json(run_directory / "analysis.json", result)
         return result
@@ -515,6 +543,8 @@ def analyze_run(run_directory: Path) -> Dict:
               for coordinate, point_rows in split_parameter_points(rows, planned)]
     result = {
         "run_id": planned["run_id"], "status": "analyzed", "method": planned["method"],
+        "analysis_schema_version": ANALYSIS_SCHEMA_VERSION,
+        "analysis_fingerprint": fingerprint,
         "protocol": planned["protocol"], "L": int(planned["L"]), "seed": int(planned["seed"]),
         "analysis_pass": bool(points) and all(point["analysis_pass"] for point in points),
         "points": points, "trace_paths": [str(path) for path in trace_paths],

@@ -26,7 +26,7 @@ to carry into the final report.
 | M00 | Methodology and provenance | ready | `b44818d` | n/a | Protocol and evidence schema defined |
 | H01 | Historical reproduction | 3x3 reproduced; 4x4 cliff measured | this commit | 3x3 IDs in note; 4x4 `561575c5085e1fb4`, `60e440b3b6219d00`, `31aeee8c9776254f` | 4x4 beta 0.1→4 loses 26,246x ESS/core-hour; endpoints match archive |
 | E02 | Fast FS estimator | L=2 speedup established | this commit | 8 paired run IDs in note | 4.69x measurement and 3.87x wall median speedup |
-| A03 | Autocorrelation automation | discrete R-hat corrected | this commit | `aee1cea9a2fae828`, `9d3f3c6f3c092919`, `a40a5b4376d6c288`, `b163f97dd43e5b40` | Largest smoke R-hat is 1.001; blocking/precision still fail |
+| A03 | Autocorrelation automation | diagnostics corrected and cached | this commit | smoke IDs in note; cache uses 12 control runs | Cached repeat 1.06 s vs 263.04 s uncached; summary byte-identical |
 | Q04 | QCPT schedule search | sweep-aware selector implemented | this commit | pending | Winner can optimize declared figure-grid ESS, coverage, or endpoint ESS |
 | T05 | Critical TFIM scaling | planned | pending | pending | — |
 | S06 | SSE comparison | adapter ready, image build blocked | this commit | pending | ALPS normalization and source/base pins tested |
