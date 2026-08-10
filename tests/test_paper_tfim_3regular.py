@@ -13,6 +13,15 @@ from experiments.paper_tfim_3regular import (
 
 
 class PaperTfim3RegularTests(unittest.TestCase):
+    def test_catalog_has_requested_sizes_and_counts(self):
+        catalog_path = Path(__file__).parents[1] / "instances" / "paper_tfim_3regular_catalog.json"
+        catalog = json.loads(catalog_path.read_text())
+        counts = {}
+        for entry in catalog["instances"]:
+            counts[entry["n"]] = counts.get(entry["n"], 0) + 1
+        self.assertEqual(counts, {4: 1, 6: 1, 8: 1, 10: 1, 12: 1, 36: 1, 60: 1,
+                                  96: 50, 128: 50})
+
     def test_graph_sizes_are_simple_and_3_regular(self):
         for n in (4, 6, 8, 10, 12, 36, 60, 96, 128):
             edges = random_3_regular_graph(n, 1234 + n)

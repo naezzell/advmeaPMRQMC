@@ -37,6 +37,8 @@ H.txt
 O.txt
 hamiltonian.hpp
 parameters.hpp
+generated_instances/
+run_outputs/
 
 # submit scripts
 job_file.sh
