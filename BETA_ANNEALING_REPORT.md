@@ -83,5 +83,6 @@ plan/schedule identities, observed seeds, commands, and wall times. Repeated
 - `a641690` — per-target `BETA:FILE` schedule mapping correction
 - `858cefc` — exhaustive malformed-schedule tests
 - `89ef0e0` — fixed-run mid-anneal checkpoint/resume validation
+- `7b8a3ac` — shared ratio-preserving tau scaling helper and direct unit test
 
 The untracked `benchmarking_tests/` tree was intentionally left untouched.
