@@ -86,6 +86,34 @@ int main(int argc, char** argv){
 		try{ make_beta_anneal_plan(custom,std::vector<double>{1.0},100,10); }
 		catch(const std::runtime_error&){ reheating_rejected = true; }
 		assert(reheating_rejected);
+
+		int malformed_index = 0;
+		auto rejects_anneal = [&](const std::string& contents, const std::vector<double>& targets){
+			std::string name = std::string(argv[1]) + ".malformed." + std::to_string(malformed_index++);
+			std::ofstream file(name.c_str()); file << contents; file.close();
+			BetaAnnealOptions invalid; invalid.schedule_file = name;
+			try{ make_beta_anneal_plan(invalid,targets,100,10); }
+			catch(const std::runtime_error&){ return true; }
+			return false;
+		};
+		assert(rejects_anneal("1 0.1\n100 1\n",{1.0}));
+		assert(rejects_anneal("0 0.1\n99 1\n",{1.0}));
+		assert(rejects_anneal("0 0.1\n50 0.5\n50 0.6\n100 1\n",{1.0}));
+		assert(rejects_anneal("0 0.1 0.2\n100 1\n",{1.0,2.0}));
+		assert(rejects_anneal("0 0\n100 1\n",{1.0}));
+		assert(rejects_anneal("0 nan\n100 1\n",{1.0}));
+		assert(rejects_anneal("0 0.1\n100 0.9\n",{1.0}));
+		assert(rejects_anneal("0 1\n",{1.0}));
+		BetaAnnealOptions conflicting; conflicting.automatic=true; conflicting.schedule_file=anneal_name;
+		bool conflict_rejected=false;
+		try{ make_beta_anneal_plan(conflicting,{1.0,4.0},100,10); }
+		catch(const std::runtime_error&){ conflict_rejected=true; }
+		assert(conflict_rejected);
+		BetaAnnealOptions too_short; too_short.automatic=true; too_short.interval=100; too_short.interval_was_set=true;
+		bool plateau_rejected=false;
+		try{ make_beta_anneal_plan(too_short,{1.0},100,10); }
+		catch(const std::runtime_error&){ plateau_rejected=true; }
+		assert(plateau_rejected);
 	}
 	divdiff_clear_up();
 	return 0;
