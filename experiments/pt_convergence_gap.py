@@ -24,7 +24,7 @@ from pathlib import Path
 DEFAULT_BETAS = (0.1, 0.2, 0.4, 0.8, 1.2, 1.6, 2.0, 2.5, 3.0, 4.0, 5.0)
 SOURCE_FILES = (
     "prepare.cpp", "PMRQMC_mpi.cpp", "PMRQMC_pt_mpi.cpp", "mainqmc.hpp",
-    "divdiff.hpp", "pt_schedule.hpp",
+    "divdiff.hpp", "pt_schedule.hpp", "beta_anneal.hpp",
 )
 
 

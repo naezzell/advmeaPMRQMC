@@ -148,7 +148,7 @@ def one_run(root, instance_seed, qmc_seed, args):
     stage = root / f"instance_{instance_seed}_qmc_{qmc_seed}"
     stage.mkdir(parents=True, exist_ok=True)
     source_root = Path(__file__).resolve().parents[1]
-    for name in ("prepare.cpp", "mainqmc.hpp", "divdiff.hpp", "pt_schedule.hpp",
+    for name in ("prepare.cpp", "mainqmc.hpp", "divdiff.hpp", "pt_schedule.hpp", "beta_anneal.hpp",
                  "PMRQMC_pt_mpi.cpp", "PMRQMC_qcpt_mpi.cpp"):
         shutil.copy2(source_root / name, stage / name)
     shutil.copy2(source_root / "experiments/exact_split_real.cpp", stage / "exact_split_real.cpp")

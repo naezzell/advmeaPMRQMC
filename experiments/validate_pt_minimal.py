@@ -297,10 +297,11 @@ def print_report(comparisons, swaps, round_trips, output):
 
 
 def validate(output, source_root, thermalization, steps, measurement_interval,
-             updates_per_exchange, oversubscribe):
+             updates_per_exchange, oversubscribe, beta_anneal=False,
+             anneal_interval=None):
     output.mkdir(parents=True, exist_ok=True)
     for name in ("prepare.cpp", "PMRQMC_mpi.cpp", "PMRQMC_pt_mpi.cpp", "mainqmc.hpp",
-                 "divdiff.hpp", "pt_schedule.hpp"):
+                 "divdiff.hpp", "pt_schedule.hpp", "beta_anneal.hpp"):
         shutil.copy2(source_root / name, output / name)
     write_inputs(output, thermalization, steps, measurement_interval)
 
@@ -315,13 +316,16 @@ def validate(output, source_root, thermalization, steps, measurement_interval,
     mpi_command = ["mpirun"]
     if oversubscribe:
         mpi_command.append("--oversubscribe")
-    run(mpi_command + ["-n", "1", "./PMRQMC_mpi.bin", "--timeseries-prefix", "fixed_trace.csv"],
+    anneal_args = (["--beta-anneal"] if beta_anneal else [])
+    if beta_anneal and anneal_interval is not None:
+        anneal_args += ["--anneal-interval", str(anneal_interval)]
+    run(mpi_command + ["-n", "1", "./PMRQMC_mpi.bin", "--timeseries-prefix", "fixed_trace.csv"] + anneal_args,
         output, "fixed_beta.log")
     mpi_command += ["-n", str(len(BETAS)), "./PMRQMC_pt_mpi.bin",
                     "--schedule", "tempering_schedule.txt",
                     "--updates-per-exchange", str(updates_per_exchange),
                     "--independent-ladders", "1", "--output-prefix", "pt",
-                    "--timeseries-prefix", "pt_trace.csv"]
+                    "--timeseries-prefix", "pt_trace.csv"] + anneal_args
     run(mpi_command, output, "pt.log")
 
     fixed_mean, fixed_error = fixed_result(output / "fixed_beta.log")
@@ -350,6 +354,8 @@ def validate(output, source_root, thermalization, steps, measurement_interval,
         "hamiltonian": {"J": J, "Gamma": GAMMA},
         "observable": "(X1 + X2) / 2",
         "thermalization_updates": thermalization,
+        "beta_anneal": beta_anneal,
+        "anneal_interval": anneal_interval,
         "sampling_updates": steps,
         "updates_per_exchange": updates_per_exchange,
         "acceptance": swaps,
@@ -375,6 +381,8 @@ def main():
     parser.add_argument("--steps", type=int, default=100000)
     parser.add_argument("--steps-per-measurement", type=int, default=10)
     parser.add_argument("--updates-per-exchange", type=int, default=1)
+    parser.add_argument("--beta-anneal", action="store_true")
+    parser.add_argument("--anneal-interval", type=int)
     parser.add_argument("--oversubscribe", action="store_true")
     args = parser.parse_args()
     source_root = Path(__file__).resolve().parents[1]
@@ -382,7 +390,7 @@ def main():
         tempfile.mkdtemp(prefix="pmrqmc_pt_validation_"))
     passed = validate(output, source_root, args.Tsteps, args.steps,
                       args.steps_per_measurement, args.updates_per_exchange,
-                      args.oversubscribe)
+                      args.oversubscribe, args.beta_anneal, args.anneal_interval)
     raise SystemExit(0 if passed else 1)
 
 

@@ -23,6 +23,7 @@ loop = load("pt_benchmark_loop", "experiments/pt_benchmark_loop.py")
 minimal = load("validate_pt_minimal", "experiments/validate_pt_minimal.py")
 qcpt = load("validate_qcpt", "experiments/validate_qcpt.py")
 edge = load("validate_qcpt_edge_cases", "experiments/validate_qcpt_edge_cases.py")
+anneal_driver = load("beta_anneal_driver", "experiments/beta_anneal_driver.py")
 
 
 class SignedTraceTest(unittest.TestCase):
@@ -65,6 +66,26 @@ class LoopParsingTest(unittest.TestCase):
         name, betas = loop.parse_schedule("pilot ladder=0.1,0.5,2")
         self.assertEqual(name, "pilot_ladder")
         self.assertEqual(betas, (0.1, 0.5, 2.0))
+
+    def test_absolute_anneal_schedule_mapping(self):
+        mapping = anneal_driver.parse_schedule_mapping(["1.5=/tmp/a", "3=/tmp/b"])
+        self.assertEqual(set(mapping), {1.5, 3.0})
+
+    def test_target_directory_names_are_distinct(self):
+        self.assertNotEqual(anneal_driver.target_directory_name(0, 1.0),
+                            anneal_driver.target_directory_name(1, 1.0))
+
+    def test_annealing_manifest_hash_includes_schedule_contents(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            schedule = Path(temporary) / "anneal.txt"
+            schedule.write_text("0 0.1\n10 1.0\n")
+            first, schedule_hash = anneal_driver.annealing_plan_hash(
+                1.0, 0.5, 10, 1, 0.001, schedule)
+            schedule.write_text("0 0.2\n10 1.0\n")
+            second, _ = anneal_driver.annealing_plan_hash(
+                1.0, 0.5, 10, 1, 0.001, schedule)
+            self.assertEqual(len(schedule_hash), 64)
+            self.assertNotEqual(first, second)
 
 
 class MinimalValidationTest(unittest.TestCase):

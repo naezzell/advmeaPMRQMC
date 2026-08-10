@@ -160,7 +160,7 @@ def write_parameters(path, beta, gamma, tsteps, steps, interval, nbins, absolute
 
 def copy_sources(stage, source_root):
     stage.mkdir(parents=True, exist_ok=True)
-    for name in ("prepare.cpp", "mainqmc.hpp", "divdiff.hpp", "pt_schedule.hpp",
+    for name in ("prepare.cpp", "mainqmc.hpp", "divdiff.hpp", "pt_schedule.hpp", "beta_anneal.hpp",
                  "PMRQMC_mpi.cpp", "PMRQMC_pt_mpi.cpp", "PMRQMC_qcpt_mpi.cpp"):
         shutil.copy2(source_root / name, stage / name)
 
@@ -243,8 +243,11 @@ def run_fixed(source_root, output, beta, gamma, args, absolute=False, combined=F
         prepare_split(stage)
     subprocess.run(["mpicxx", "-O1", "-std=c++11", "-o", "PMRQMC_mpi.bin", "PMRQMC_mpi.cpp"],
                    cwd=stage, check=True, stdout=subprocess.DEVNULL)
-    subprocess.run(mpi_command(args.oversubscribe, 1) + ["./PMRQMC_mpi.bin",
-                    "--timeseries-prefix", "trace.csv"], cwd=stage, check=True,
+    command = mpi_command(args.oversubscribe, 1) + ["./PMRQMC_mpi.bin",
+               "--timeseries-prefix", "trace.csv"]
+    if args.beta_anneal:
+        command += ["--beta-anneal", "--anneal-interval", str(args.anneal_interval)]
+    subprocess.run(command, cwd=stage, check=True,
                    stdout=(stage / "run.log").open("w"), stderr=subprocess.STDOUT)
     rows = read_rows(stage / "trace.csv")
     return stage, {name: ratio_stats(rows, field) for name, field in
@@ -261,10 +264,13 @@ def run_qcpt(source_root, output, args, absolute=False):
     subprocess.run(["mpicxx", "-O1", "-std=c++11", "-DPMR_QCPT", "-o",
                     "PMRQMC_qcpt_mpi.bin", "PMRQMC_qcpt_mpi.cpp"], cwd=stage,
                    check=True, stdout=subprocess.DEVNULL)
-    subprocess.run(mpi_command(args.oversubscribe, len(PATH)) + ["./PMRQMC_qcpt_mpi.bin",
-                    "--schedule", "qcpt_schedule.txt", "--updates-per-exchange",
-                    str(args.updates_per_exchange), "--output-prefix", "qcpt",
-                    "--timeseries-prefix", "trace.csv"], cwd=stage, check=True,
+    command = mpi_command(args.oversubscribe, len(PATH)) + ["./PMRQMC_qcpt_mpi.bin",
+               "--schedule", "qcpt_schedule.txt", "--updates-per-exchange",
+               str(args.updates_per_exchange), "--output-prefix", "qcpt",
+               "--timeseries-prefix", "trace.csv"]
+    if args.beta_anneal:
+        command += ["--beta-anneal", "--anneal-interval", str(args.anneal_interval)]
+    subprocess.run(command, cwd=stage, check=True,
                    stdout=(stage / "run.log").open("w"), stderr=subprocess.STDOUT)
     rows = read_rows(stage / "trace.csv")
     estimates = {}
@@ -364,6 +370,8 @@ def main():
     parser.add_argument("--interval", type=int, default=10)
     parser.add_argument("--nbins", type=int, default=50)
     parser.add_argument("--updates-per-exchange", type=int, default=10)
+    parser.add_argument("--beta-anneal", action="store_true")
+    parser.add_argument("--anneal-interval", type=int, default=10)
     parser.add_argument("--oversubscribe", action="store_true")
     parser.add_argument("--absolute-weights", action="store_true")
     args = parser.parse_args()

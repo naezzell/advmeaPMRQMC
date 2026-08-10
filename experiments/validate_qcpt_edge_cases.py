@@ -97,7 +97,7 @@ def write_parameters(directory, beta, gamma, tsteps, steps, nbins):
 
 def stage_sources(directory):
     directory.mkdir(parents=True, exist_ok=True)
-    for name in ("prepare.cpp", "mainqmc.hpp", "divdiff.hpp", "pt_schedule.hpp",
+    for name in ("prepare.cpp", "mainqmc.hpp", "divdiff.hpp", "pt_schedule.hpp", "beta_anneal.hpp",
                  "PMRQMC_mpi.cpp", "PMRQMC_pt_mpi.cpp", "PMRQMC_qcpt_mpi.cpp",
                  "target_weight_immutability.cpp", "split_component_probe.cpp"):
         shutil.copy2(ROOT / "experiments" / name if name.endswith(".cpp") and name in {

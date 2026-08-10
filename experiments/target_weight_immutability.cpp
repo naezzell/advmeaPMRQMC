@@ -74,6 +74,12 @@ int main(){
         std::cerr << "target-weight immutability failure" << std::endl;
         return 1;
     }
+    retarget_run_parameters(1.6,0.8,0.25);
+    if(std::abs(currWeight.log_abs()-target) > 1e-10 ||
+       run_beta != 1.6 || run_tau != 0.8 || run_gamma != 0.25){
+        std::cerr << "retargeted PMR weight mismatch" << std::endl;
+        return 1;
+    }
     std::cout << "target-weight immutability: OK\n";
     return 0;
 }

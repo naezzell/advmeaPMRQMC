@@ -96,7 +96,7 @@ def stage_sources(directory, source_root):
     directory = Path(directory)
     source_root = Path(source_root)
     directory.mkdir(parents=True, exist_ok=True)
-    for name in ("prepare.cpp", "PMRQMC.cpp", "PMRQMC_pt_mpi.cpp", "mainqmc.hpp", "divdiff.hpp", "pt_schedule.hpp"):
+    for name in ("prepare.cpp", "PMRQMC.cpp", "PMRQMC_pt_mpi.cpp", "mainqmc.hpp", "divdiff.hpp", "pt_schedule.hpp", "beta_anneal.hpp"):
         shutil.copy2(source_root / name, directory / name)
 
 

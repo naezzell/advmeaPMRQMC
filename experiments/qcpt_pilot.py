@@ -61,7 +61,7 @@ def prepare_instance(root, n, seed, target_gamma):
 
 def stage_sources(stage, source_root):
     stage.mkdir(parents=True, exist_ok=True)
-    for name in ("prepare.cpp", "mainqmc.hpp", "divdiff.hpp", "pt_schedule.hpp",
+    for name in ("prepare.cpp", "mainqmc.hpp", "divdiff.hpp", "pt_schedule.hpp", "beta_anneal.hpp",
                  "PMRQMC_mpi.cpp", "PMRQMC_pt_mpi.cpp", "PMRQMC_qcpt_mpi.cpp"):
         shutil.copy2(source_root / name, stage / name)
 

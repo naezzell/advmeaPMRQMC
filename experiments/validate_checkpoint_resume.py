@@ -61,6 +61,8 @@ def execute(stage, binary, schedule, prefix, args, qcpt, resume=False,
                 "--checkpoint-every", str(checkpoint_every),
                 "--output-prefix", prefix,
                 "--timeseries-prefix", prefix + "_trace.csv"]
+    if args.beta_anneal:
+        command += ["--beta-anneal", "--anneal-interval", str(args.anneal_interval)]
     if resume:
         command.append("--resume")
     if interrupt:
@@ -144,12 +146,16 @@ def main():
     parser.add_argument("--nbins", type=int, default=20)
     parser.add_argument("--updates-per-exchange", type=int, default=10)
     parser.add_argument("--checkpoint-every", type=int, default=1000)
+    parser.add_argument("--beta-anneal", action="store_true")
+    parser.add_argument("--anneal-interval", type=int, default=10)
     parser.add_argument("--interrupt-timeout", type=float, default=120.0)
     parser.add_argument("--oversubscribe", action="store_true")
     parser.add_argument("--absolute-weights", action="store_true")
     args = parser.parse_args()
     if args.steps < args.interval * args.nbins:
         parser.error("steps must be at least interval * nbins")
+    if args.beta_anneal and not (0 < args.checkpoint_every < args.Tsteps):
+        parser.error("annealed resume validation requires 0 < checkpoint-every < Tsteps")
     root = Path(args.output).resolve()
     root.mkdir(parents=True, exist_ok=True)
     results = [one_case(root, "qcpt", args, True, args.absolute_weights),
