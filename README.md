@@ -50,6 +50,71 @@ The meaning behind these parameters can be adjusted either in `parameters.hpp` o
 - steps: total number of QMC updates after Tsteps
 - stepsPerMeasurement: a sample measurement is taken every stepsPerMeasurement
 
+### Opt-in beta-annealed initialization
+
+`PMRQMC.bin`, `PMRQMC_mpi.bin`, and the PT/QCPT executable accept an optional
+beta ramp before production:
+
+```text
+--beta-anneal
+--anneal-start-factor 0.001
+--anneal-interval K
+```
+
+With `--beta-anneal`, `Tsteps` is the number of annealing updates, not a
+separate static-beta equilibration. The default ramp is linear from
+`0.001 * target_beta` to the target, and beta is retargeted every `K` calls to
+`update()`. The default `K` is `N`, so one "sweep" in the paper-inspired
+protocol corresponds to one nominal sweep of `N` update calls here. Tau is
+scaled throughout the ramp to preserve the target `tau/beta` ratio. The exact
+target is forced after update `Tsteps`, and the next update begins production.
+
+For a fixed run, runtime targets avoid recompiling for every endpoint:
+
+```text
+./PMRQMC.bin --target-beta 3.0 --target-tau 1.5 \
+  --beta-anneal --anneal-interval 100
+```
+
+If `--target-tau` is omitted, it defaults to half the target beta. In PT and
+QCPT, every slot follows its own beta ramp. Exchanges, flow accounting, and
+exchange RNG draws are disabled during the ramp. Production-relative exchange
+parity starts at the endpoint; QCPT keeps each slot's target gamma fixed for
+the entire beta ramp.
+
+An absolute schedule can replace the factor-based ramp:
+
+```text
+# completed_updates beta_slot_0 beta_slot_1 ...
+0       0.001 0.002 0.004
+50000   0.05  0.10  0.20
+100000  0.10  0.20  0.40
+```
+
+Pass it with `--beta-anneal-schedule FILE`. Rows are cumulative update
+coordinates; the first must be zero, the last must equal `Tsteps`, and the
+last beta in each column must equal that slot's target. Columns must be
+positive, finite, and nondecreasing. The piecewise-linear curve is evaluated
+only at `--anneal-interval` boundaries. Factor and file modes cannot be used
+together.
+
+To run independent fixed simulations for several endpoints, compile once and
+launch a fresh process per target with:
+
+```text
+python3 experiments/beta_anneal_driver.py RUN_DIRECTORY \
+  --betas 0.5,1,2,4 --Tsteps 100000 --steps 1000000 \
+  --anneal-interval 100 --mpi-ranks 4
+```
+
+Each target receives a separate output directory. `manifest.json` records the
+target, tau, observed RNG seeds, ramp settings, schedule and plan hashes,
+command, and wall time. Repeat `--absolute-schedule BETA:FILE` for custom
+per-target schedules. Checkpoint identity includes the annealing plan, so an
+interrupted ramp can resume only with matching settings. Omitting all
+annealing and runtime-target options preserves the legacy fixed/PT behavior
+and checkpoint layout.
+
 However, there is one subtlety. Underlying our QMC estimates is a binning analysis (see <a href="https://arxiv.org/abs/2307.06503">Appendix B of arXiv:2307.06503</a>) with a parameter `Nbins` (this is also set in `parameters.hpp` and for the drivers in `utils/ioscripts.py`). For valid statistical analysis, is is required that steps/stepsPerMeasurement/Nbins > Nbins, and it is better if this value is an integer. Larger values of Nbins improves the accuracy of error bar estimation. By default, we set `Nbins=100` in the `utils` for speed, which is generally sufficient, but a safer choice is `Nbins=200` or more.
 
 ## On our figures and data in `data_plotting_misc`
