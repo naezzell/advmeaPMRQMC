@@ -28,7 +28,7 @@ test: tests/pt_components_test
 validate-pt:
 	python3 experiments/validate_pt_minimal.py --oversubscribe
 
-tests/pt_components_test: tests/pt_components_test.cpp pt_schedule.hpp divdiff.hpp
+tests/pt_components_test: tests/pt_components_test.cpp pt_schedule.hpp beta_anneal.hpp divdiff.hpp
 	$(CXX) $(CXXFLAGS) -o $@ $<
 
 clean:

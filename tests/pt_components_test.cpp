@@ -1,5 +1,6 @@
 #include "../divdiff.hpp"
 #include "../pt_schedule.hpp"
+#include "../beta_anneal.hpp"
 
 #include <cassert>
 #include <cmath>
@@ -23,6 +24,16 @@ int main(int argc, char** argv){
 	assert(replica_exchange_log_ratio(2.0,2.0,-7.0,-7.0) == 0.0);
 	int origin = -1, seen_opposite = 0;
 	assert(!record_pt_endpoint(0,origin,seen_opposite));
+
+	BetaAnnealOptions automatic;
+	automatic.automatic = true;
+	automatic.interval = 10;
+	automatic.interval_was_set = true;
+	BetaAnnealPlan linear = make_beta_anneal_plan(automatic,std::vector<double>{1.0,4.0},100,7);
+	assert(linear.enabled && linear.interval == 10 && linear.retarget_after(20));
+	assert(std::fabs(linear.beta_at(0,0)-0.001) < 1e-14);
+	assert(std::fabs(linear.beta_at(50,1)-2.002) < 1e-14);
+	assert(linear.beta_at(100,1)==4.0 && beta_anneal_hash(linear)!=0);
 	assert(!record_pt_endpoint(0,origin,seen_opposite));
 	assert(!record_pt_endpoint(4,origin,seen_opposite));
 	assert(record_pt_endpoint(0,origin,seen_opposite));
@@ -57,6 +68,24 @@ int main(int argc, char** argv){
 		bool duplicate_rejected = false;
 		try{ read_qcpt_schedule(duplicate_name); } catch(const std::runtime_error&){ duplicate_rejected = true; }
 		assert(duplicate_rejected);
+
+		std::string anneal_name = std::string(argv[1]) + ".anneal";
+		std::ofstream anneal_file(anneal_name.c_str());
+		anneal_file << "# completed beta0 beta1\n0 0.01 0.02\n50 0.2 0.8\n100 1 4\n";
+		anneal_file.close();
+		BetaAnnealOptions custom; custom.schedule_file = anneal_name;
+		BetaAnnealPlan parsed = make_beta_anneal_plan(custom,std::vector<double>{1.0,4.0},100,10);
+		assert(std::fabs(parsed.beta_at(25,0)-0.105) < 1e-14);
+		assert(std::fabs(parsed.beta_at(75,1)-2.4) < 1e-14);
+		std::string reheating_name = std::string(argv[1]) + ".reheating";
+		std::ofstream reheating_file(reheating_name.c_str());
+		reheating_file << "0 0.2\n50 0.1\n100 1\n";
+		reheating_file.close();
+		custom.schedule_file = reheating_name;
+		bool reheating_rejected = false;
+		try{ make_beta_anneal_plan(custom,std::vector<double>{1.0},100,10); }
+		catch(const std::runtime_error&){ reheating_rejected = true; }
+		assert(reheating_rejected);
 	}
 	divdiff_clear_up();
 	return 0;

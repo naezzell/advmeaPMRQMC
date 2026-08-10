@@ -485,6 +485,15 @@ void configure_run_parameters(double beta_value, double tau_value, double gamma_
 	}
 }
 
+// Change the sampling parameters of an existing configuration.  A PMR
+// snapshot is parameter-independent, but all energy, matrix-element, divided-
+// difference, and factorial caches must be rebuilt before another update.
+void retarget_run_parameters(double beta_value, double tau_value, double gamma_value = run_gamma){
+	lattice = z;
+	configure_run_parameters(beta_value,tau_value,gamma_value);
+	currWeight = GetWeight();
+}
+
 void init_basic(){
 	configure_run_parameters(run_beta, run_tau);
 	zero -= zero; currWeight = GetWeight();
