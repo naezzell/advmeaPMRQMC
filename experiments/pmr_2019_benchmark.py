@@ -13,6 +13,10 @@ sys.path.append(str(Path(__file__).resolve().parents[1] / "utils"))
 sys.path.append(str(Path(__file__).resolve().parent))
 from pauli_manipulations import PauliH, PauliTerm
 from pt_driver import generate_tempering_schedule
+from paper_tfim_3regular import (
+    random_3_regular_graph as canonical_random_3_regular_graph,
+    write_instance as write_paper_tfim_instance,
+)
 
 
 # The eleven-point beta ladder used by this preset.  tau defaults to beta/2.
@@ -21,41 +25,13 @@ GAMMA_PRESETS = (0.1, 0.4)
 
 
 def random_3_regular_graph(n, seed):
-    if n < 4 or n % 2:
-        raise ValueError("a simple 3-regular graph requires an even n >= 4")
-    rng = random.Random(seed)
-    for _ in range(1000):
-        stubs = [vertex for vertex in range(n) for _ in range(3)]
-        rng.shuffle(stubs)
-        edges = set()
-        valid = True
-        for left, right in zip(stubs[::2], stubs[1::2]):
-            edge = tuple(sorted((left, right)))
-            if left == right or edge in edges:
-                valid = False
-                break
-            edges.add(edge)
-        if valid and len(edges) == 3 * n // 2:
-            return sorted(edges)
-    raise RuntimeError("could not generate a simple deterministic 3-regular graph")
+    return canonical_random_3_regular_graph(n, seed)
 
 
 def make_random_3regular_tfim(n, gamma, seed, output_dir):
-    """Generate H.txt and transverse magnetization for one benchmark seed."""
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    edges = random_3_regular_graph(n, seed)
-    terms = [PauliTerm(-1.0, [left + 1, right + 1], ["Z", "Z"], n) for left, right in edges]
-    terms += [PauliTerm(-float(gamma), [vertex + 1], ["X"], n) for vertex in range(n)]
-    hamiltonian = PauliH(n, terms)
-    magnetization = PauliH(n, [PauliTerm(1.0 / n, [vertex + 1], ["X"], n) for vertex in range(n)])
-    (output_dir / "H.txt").write_text(hamiltonian.to_pmr_str())
-    (output_dir / "transverse_magnetization.txt").write_text(magnetization.to_pmr_str())
-    (output_dir / "instance.json").write_text(json.dumps({
-        "model": "random_3_regular_transverse_field_ising",
-        "n": n, "gamma": gamma, "seed": seed, "edges": edges,
-    }, indent=2) + "\n")
-    return output_dir / "H.txt"
+    """Generate the split paper TFIM; gamma is retained only for API compatibility."""
+    del gamma
+    return write_paper_tfim_instance(output_dir, n, seed)
 
 
 def random_3regular_max2sat(n, seed):

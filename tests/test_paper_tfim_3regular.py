@@ -1,4 +1,5 @@
 import json
+import math
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,6 +10,14 @@ from experiments.paper_tfim_3regular import (
     random_3_regular_graph,
     validate_edges,
     write_instance,
+)
+from experiments.run_paper_tfim_3regular import (
+    BETA_2019,
+    expand_plan,
+    gamma_2017,
+    load_catalog,
+    schedule_for_preset,
+    write_schedule,
 )
 
 
@@ -21,6 +30,29 @@ class PaperTfim3RegularTests(unittest.TestCase):
             counts[entry["n"]] = counts.get(entry["n"], 0) + 1
         self.assertEqual(counts, {4: 1, 6: 1, 8: 1, 10: 1, 12: 1, 36: 1, 60: 1,
                                   96: 50, 128: 50})
+
+    def test_2019_plan_has_200_runs(self):
+        catalog = load_catalog(Path(__file__).parents[1] / "instances" / "paper_tfim_3regular_catalog.json")
+        plan = expand_plan(catalog, "2019")
+        self.assertEqual(len(plan), 200)
+        self.assertTrue(all(len(row["schedule"]) == 11 for row in plan))
+        self.assertEqual(tuple(row["schedule"][i][0] for i in range(11) for row in plan[:1]), BETA_2019)
+
+    def test_2017_gamma_curve(self):
+        self.assertTrue(math.isclose(gamma_2017(1.0), 10.0 ** -0.5))
+        schedule = schedule_for_preset("2017")
+        self.assertTrue(all(math.isclose(gamma, gamma_2017(beta))
+                            for beta, gamma, _ in schedule))
+
+    def test_schedule_file_shape_matches_runner(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "schedule.txt"
+            write_schedule(path, "2019", 0.1)
+            rows = [line for line in path.read_text().splitlines() if line and not line.startswith("#")]
+            self.assertTrue(all(len(row.split()) == 2 for row in rows))
+            write_schedule(path, "2017", None)
+            rows = [line for line in path.read_text().splitlines() if line and not line.startswith("#")]
+            self.assertTrue(all(len(row.split()) == 3 for row in rows))
 
     def test_graph_sizes_are_simple_and_3_regular(self):
         for n in (4, 6, 8, 10, 12, 36, 60, 96, 128):
