@@ -21,10 +21,11 @@ def parse_schedule_mapping(values):
     result = {}
     for value in values:
         try:
-            beta_text, path_text = value.split("=", 1)
+            separator = ":" if ":" in value else "="
+            beta_text, path_text = value.split(separator, 1)
             beta = float(beta_text)
         except ValueError as error:
-            raise ValueError("absolute schedules must use BETA=PATH") from error
+            raise ValueError("absolute schedules must use BETA:FILE") from error
         if beta in result:
             raise ValueError(f"duplicate absolute schedule for beta {beta}")
         result[beta] = Path(path_text).resolve()
@@ -151,7 +152,7 @@ def main():
     parser.add_argument("--mpi-ranks", type=int, default=1)
     parser.add_argument("--start-factor", type=float, default=0.001)
     parser.add_argument("--anneal-interval", type=int)
-    parser.add_argument("--absolute-schedule", action="append", default=[], metavar="BETA=PATH")
+    parser.add_argument("--absolute-schedule", action="append", default=[], metavar="BETA:FILE")
     parser.add_argument("--Tsteps", type=int, default=1000000)
     parser.add_argument("--steps", type=int, default=1000000)
     parser.add_argument("--steps-per-measurement", type=int, default=100)

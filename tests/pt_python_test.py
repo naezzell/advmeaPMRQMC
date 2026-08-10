@@ -68,7 +68,7 @@ class LoopParsingTest(unittest.TestCase):
         self.assertEqual(betas, (0.1, 0.5, 2.0))
 
     def test_absolute_anneal_schedule_mapping(self):
-        mapping = anneal_driver.parse_schedule_mapping(["1.5=/tmp/a", "3=/tmp/b"])
+        mapping = anneal_driver.parse_schedule_mapping(["1.5:/tmp/a", "3:/tmp/b"])
         self.assertEqual(set(mapping), {1.5, 3.0})
 
     def test_target_directory_names_are_distinct(self):
