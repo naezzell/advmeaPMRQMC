@@ -3,6 +3,7 @@
 #include <mpi.h>
 #include "mainqmc.hpp"
 #include "pt_schedule.hpp"
+#include "beta_anneal.hpp"
 
 #include <algorithm>
 #include <cstdio>
@@ -45,7 +46,17 @@ struct PTOptions {
 	int checkpoint_every = 0;
 	bool resume = false;
 	bool stop_after_checkpoint = false;
+	BetaAnnealOptions anneal;
 };
+
+static void retarget_pt_parameters(double beta_value, double tau_value, double gamma_value){
+#ifdef PMR_QCPT
+	retarget_run_parameters(beta_value,tau_value,gamma_value);
+#else
+	(void)gamma_value;
+	retarget_run_parameters(beta_value,tau_value);
+#endif
+}
 
 static void pt_signal_handler(int){ save_data_flag = 1; }
 
@@ -53,7 +64,10 @@ static void usage(const char* program){
 	if(mpi_rank == 0) std::cerr
 		<< "Usage: " << program << " --schedule FILE [--updates-per-exchange N]\\n"
 		<< "       [--independent-ladders N] [--output-prefix PREFIX] [--timeseries-prefix FILE]\\n"
-		<< "       [--checkpoint-every N] [--resume] [--stop-after-checkpoint]\\n";
+		<< "       [--checkpoint-every N] [--resume] [--stop-after-checkpoint]\\n"
+		<< "       [--beta-anneal [--anneal-start-factor F] | --beta-anneal-schedule FILE]\\n"
+		<< "       [--anneal-interval N]\\n";
+
 }
 
 static bool parse_options(int argc, char** argv, PTOptions& options){
@@ -67,6 +81,10 @@ static bool parse_options(int argc, char** argv, PTOptions& options){
 		else if(arg == "--timeseries-prefix" && i+1<argc) options.timeseries_prefix = argv[++i];
 		else if(arg == "--resume") options.resume = true;
 		else if(arg == "--stop-after-checkpoint") options.stop_after_checkpoint = true;
+		else if(arg == "--beta-anneal") options.anneal.automatic = true;
+		else if(arg == "--anneal-start-factor" && i+1<argc){ options.anneal.start_factor=std::atof(argv[++i]); options.anneal.start_factor_was_set=true; }
+		else if(arg == "--anneal-interval" && i+1<argc){ options.anneal.interval=std::strtoull(argv[++i],NULL,10); options.anneal.interval_was_set=true; }
+		else if(arg == "--beta-anneal-schedule" && i+1<argc) options.anneal.schedule_file=argv[++i];
 		else return false;
 	}
 	if(options.output_prefix.empty()) options.output_prefix = "pmrqmc_pt";
@@ -371,6 +389,9 @@ int main(int argc, char** argv){
 	try{ layout = infer_pt_layout(mpi_size,static_cast<int>(schedule.beta.size()),options.independent_ladders); }
 	catch(const std::exception& error){ if(mpi_rank==0) std::cerr << "Error: " << error.what() << '\n'; MPI_Finalize(); return 2; }
 	int ntemperatures = layout.temperatures;
+	BetaAnnealPlan anneal;
+	try{ anneal=make_beta_anneal_plan(options.anneal,schedule.beta,Tsteps,N); }
+	catch(const std::exception& error){ if(mpi_rank==0) std::cerr << "Error: " << error.what() << '\n'; MPI_Finalize(); return 2; }
 	int ladder = mpi_rank/ntemperatures, temperature = mpi_rank%ntemperatures;
 	MPI_Comm ladder_comm, temperature_comm;
 	MPI_Comm_split(MPI_COMM_WORLD,ladder,temperature,&ladder_comm);
@@ -388,6 +409,7 @@ int main(int argc, char** argv){
 #else
 		pt_schedule_hash(schedule);
 #endif
+	schedule_hash = combine_schedule_anneal_hash(schedule_hash,anneal);
 	uint64_t trajectory_id = temperature; uint32_t exchange_parity = 0; uint64_t completed_updates = 0;
 	std::vector<uint64_t> current, received;
 	std::vector<uint64_t> flow(static_cast<size_t>(ntemperatures)*ntemperatures,0);
@@ -401,13 +423,15 @@ int main(int argc, char** argv){
 		divdiff dd(q+4,500), ddfs(q+4,500), dd1(q+4,500), dd2(q+4,500);
 		d=&dd; dfs=&ddfs; ds1=&dd1; ds2=&dd2;
 #ifdef PMR_QCPT
-		configure_run_parameters(schedule.beta[temperature],schedule.tau[temperature],schedule.gamma[temperature]);
+		double initial_beta=anneal.enabled ? anneal.beta_at(0,temperature) : schedule.beta[temperature];
+		configure_run_parameters(initial_beta,schedule.tau[temperature]*initial_beta/schedule.beta[temperature],schedule.gamma[temperature]);
 #else
 		// A legacy beta-only schedule has no gamma coordinate.  When the
 		// generated Hamiltonian is split, retain the compile-time gamma from
 		// parameters.hpp rather than interpreting the schedule's compatibility
 		// placeholder as a physical value.
-		configure_run_parameters(schedule.beta[temperature],schedule.tau[temperature]);
+		double initial_beta=anneal.enabled ? anneal.beta_at(0,temperature) : schedule.beta[temperature];
+		configure_run_parameters(initial_beta,schedule.tau[temperature]*initial_beta/schedule.beta[temperature]);
 #endif
 		configure_valid_observables();
 		init_rng();
@@ -420,12 +444,22 @@ int main(int argc, char** argv){
 		}
 		if(resume) completed_updates = load_checkpoint(options.output_prefix,schedule_hash,mpi_rank,ladder,temperature,trajectory_id,exchange_parity,flow,endpoint_visits,round_trips,endpoint_state,endpoint_origin,endpoint_seen_opposite,crossed_weight_seconds,attempts,accepts);
 		else init();
+		if(resume && anneal.enabled){
+			uint64_t progress=std::min<uint64_t>(completed_updates,static_cast<uint64_t>(Tsteps));
+			double restored_beta=anneal.beta_at(progress,temperature);
+			retarget_pt_parameters(restored_beta,schedule.tau[temperature]*restored_beta/schedule.beta[temperature],schedule.gamma[temperature]);
+		}
 		export_PMR_snapshot(current); received.resize(current.size());
 		const uint64_t total_updates = static_cast<uint64_t>(Tsteps) + static_cast<uint64_t>(steps);
 		const uint64_t exchange_interval = static_cast<uint64_t>(options.updates_per_exchange);
 		for(uint64_t update_number=completed_updates; update_number<total_updates; update_number++){
 			step = update_number;
 			update();
+			bool annealing_update=anneal.enabled && update_number < static_cast<uint64_t>(Tsteps);
+			if(annealing_update && anneal.retarget_after(update_number+1)){
+				double next_beta=anneal.beta_at(update_number+1,temperature);
+				retarget_pt_parameters(next_beta,schedule.tau[temperature]*next_beta/schedule.beta[temperature],schedule.gamma[temperature]);
+			}
 			if(update_number >= static_cast<uint64_t>(Tsteps) &&
 				((update_number-static_cast<uint64_t>(Tsteps)+1) % static_cast<uint64_t>(stepsPerMeasurement) == 0)){
 				measure();
@@ -463,8 +497,16 @@ int main(int argc, char** argv){
 				}
 				measurement_step++;
 			}
-			if((update_number+1) % exchange_interval == 0 || update_number+1 == total_updates){
-				exchange_parity = static_cast<uint32_t>(((update_number+1)/exchange_interval - 1) % 2);
+			uint64_t production_updates=update_number >= static_cast<uint64_t>(Tsteps) ? update_number-static_cast<uint64_t>(Tsteps)+1 : 0;
+			bool exchange_boundary = anneal.enabled ?
+				(production_updates>0 && (production_updates%exchange_interval==0 || update_number+1==total_updates)) :
+				((update_number+1)%exchange_interval==0 || update_number+1==total_updates);
+			bool control_boundary=exchange_boundary || (annealing_update &&
+				(anneal.retarget_after(update_number+1) || (options.checkpoint_every>0 &&
+				 (update_number+1)%static_cast<uint64_t>(options.checkpoint_every)==0)));
+			if(exchange_boundary){
+				if(anneal.enabled) exchange_parity=static_cast<uint32_t>(((production_updates-1)/exchange_interval)%2);
+				else exchange_parity=static_cast<uint32_t>(((update_number+1)/exchange_interval-1)%2);
 				for(int edge=0;edge<ntemperatures-1;edge++) exchange_edge(ladder_comm,ladder_rank,temperature,schedule,edge,exchange_parity,current,received,trajectory_id,endpoint_state,attempts[edge],accepts[edge],crossed_weight_seconds,endpoint_origin,endpoint_seen_opposite);
 				flow[static_cast<size_t>(trajectory_id)*ntemperatures+temperature]++;
 				if(temperature==0 || temperature==ntemperatures-1){
@@ -473,6 +515,8 @@ int main(int argc, char** argv){
 						round_trips++;
 					endpoint_state = temperature;
 				}
+			}
+			if(control_boundary){
 				int local_stop = (save_data_flag || pt_stop_requested) ? 1 : 0, global_stop = 0;
 				MPI_Allreduce(&local_stop,&global_stop,1,MPI_INT,MPI_MAX,MPI_COMM_WORLD);
 				if(options.checkpoint_every > 0 && (update_number+1) % static_cast<uint64_t>(options.checkpoint_every) == 0) global_stop = 2;

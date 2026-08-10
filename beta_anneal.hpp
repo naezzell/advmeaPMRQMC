@@ -15,6 +15,7 @@ struct BetaAnnealOptions {
 	bool automatic = false;
 	std::string schedule_file;
 	double start_factor = 0.001;
+	bool start_factor_was_set = false;
 	uint64_t interval = 0;
 	bool interval_was_set = false;
 };
@@ -53,7 +54,11 @@ inline bool beta_anneal_close(double left, double right){
 inline BetaAnnealPlan make_beta_anneal_plan(const BetaAnnealOptions& options,
 		const std::vector<double>& targets, uint64_t updates, uint64_t default_interval){
 	BetaAnnealPlan plan;
-	if(!options.automatic && options.schedule_file.empty()) return plan;
+	if(!options.automatic && options.schedule_file.empty()){
+		if(options.start_factor_was_set || options.interval_was_set)
+			throw std::runtime_error("anneal factor/interval requires --beta-anneal or --beta-anneal-schedule");
+		return plan;
+	}
 	if(options.automatic && !options.schedule_file.empty())
 		throw std::runtime_error("--beta-anneal and --beta-anneal-schedule are mutually exclusive");
 	if(targets.empty()) throw std::runtime_error("beta annealing requires at least one target beta");

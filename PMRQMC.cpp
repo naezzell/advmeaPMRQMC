@@ -17,9 +17,41 @@
 //
 
 #include"mainqmc.hpp"
+#include"beta_anneal.hpp"
 
 double get_cpu_time(){ return (double)clock() / CLOCKS_PER_SEC;}
 void signalHandler(int signum){	if(save_data_flag==0) save_data_flag = 1; }
+
+struct FixedRunOptions {
+	BetaAnnealOptions anneal;
+	double target_beta = run_beta, target_tau = run_tau;
+	bool target_beta_set = false, target_tau_set = false;
+};
+
+static bool parse_fixed_options(int argc, char** argv, FixedRunOptions& options){
+	bool rank_set = false;
+	for(int i=1;i<argc;i++){
+		std::string arg(argv[i]);
+		if(arg == "--target-beta" && i+1<argc){ options.target_beta=std::stod(argv[++i]); options.target_beta_set=true; }
+		else if(arg == "--target-tau" && i+1<argc){ options.target_tau=std::stod(argv[++i]); options.target_tau_set=true; }
+		else if(arg == "--beta-anneal") options.anneal.automatic=true;
+		else if(arg == "--anneal-start-factor" && i+1<argc){ options.anneal.start_factor=std::stod(argv[++i]); options.anneal.start_factor_was_set=true; }
+		else if(arg == "--anneal-interval" && i+1<argc){ options.anneal.interval=std::stoull(argv[++i]); options.anneal.interval_was_set=true; }
+		else if(arg == "--beta-anneal-schedule" && i+1<argc) options.anneal.schedule_file=argv[++i];
+		else if(!rank_set && !arg.empty() && arg[0]!='-'){ mpi_rank=std::stoi(arg); mpi_size=mpi_rank+1; rank_set=true; }
+		else return false;
+	}
+	if(options.target_beta_set && !options.target_tau_set) options.target_tau=options.target_beta/2.0;
+	return std::isfinite(options.target_beta) && options.target_beta>0.0 &&
+		std::isfinite(options.target_tau) && options.target_tau>=0.0 && options.target_tau<=options.target_beta;
+}
+
+static uint64_t fixed_run_identity(const BetaAnnealPlan& plan, double beta_value, double tau_value){
+	uint64_t result=beta_anneal_hash(plan), bits=0;
+	std::memcpy(&bits,&beta_value,sizeof(bits)); result ^= bits+UINT64_C(0x9e3779b97f4a7c15)+(result<<6)+(result>>2);
+	std::memcpy(&bits,&tau_value,sizeof(bits)); result ^= bits+UINT64_C(0x9e3779b97f4a7c15)+(result<<6)+(result>>2);
+	return result;
+}
 
 int main(int argc, char* argv[]){
 #ifdef SAVE_UNFINISHED_CALCULATION
@@ -34,13 +66,24 @@ int main(int argc, char* argv[]){
 		exit(1);
 	}
 	start_time = get_cpu_time(); int i,j,k,o=0;
-	if(argc > 1){
-		mpi_rank = std::stoi(argv[1]); mpi_size = mpi_rank + 1;
-	} else if(const char* task_id_env = std::getenv("SLURM_ARRAY_TASK_ID")){
+	FixedRunOptions options;
+	try{
+		if(!parse_fixed_options(argc,argv,options)) throw std::runtime_error("unknown or incomplete command-line option");
+	}catch(const std::exception& error){ std::cerr << "Error: " << error.what() << std::endl; return 2; }
+	if(mpi_size==0) if(const char* task_id_env = std::getenv("SLURM_ARRAY_TASK_ID")){
 		mpi_rank = std::stoi(task_id_env); mpi_size = mpi_rank + 1;
 	}
+	BetaAnnealPlan anneal;
+	try{ anneal=make_beta_anneal_plan(options.anneal,std::vector<double>(1,options.target_beta),Tsteps,N); }
+	catch(const std::exception& error){ std::cerr << "Error: " << error.what() << std::endl; return 2; }
+	dynamic_run_parameters = options.target_beta_set || options.target_tau_set || anneal.enabled;
+	dynamic_run_identity = fixed_run_identity(anneal,options.target_beta,options.target_tau);
 	divdiff_init(); divdiff dd(q+4,500); divdiff ddfs(q+4,500); divdiff dd1(q+4,500); divdiff dd2(q+4,500);
 	d=&dd; dfs=&ddfs; ds1=&dd1; ds2=&dd2;
+	if(dynamic_run_parameters){
+		double initial_beta=anneal.enabled ? anneal.beta_at(0,0) : options.target_beta;
+		configure_run_parameters(initial_beta,options.target_tau*initial_beta/options.target_beta);
+	}
 	init_rng();
 	if(check_QMC_data()){
 		load_QMC_data(); init_basic();
@@ -53,7 +96,17 @@ int main(int argc, char* argv[]){
 			for(;step<stepsPerMeasurement;step++) update(); measure(); measurement_step++;
 		}
 	} else{
-		for(;step<Tsteps;step++) update(); TstepsFinished = 1;
+		if(anneal.enabled){
+			for(;step<Tsteps;step++){
+				update(); uint64_t completed=static_cast<uint64_t>(step)+1;
+				if(anneal.retarget_after(completed)){
+					double next_beta=anneal.beta_at(completed,0);
+					retarget_run_parameters(next_beta,options.target_tau*next_beta/options.target_beta);
+				}
+			}
+			retarget_run_parameters(options.target_beta,options.target_tau);
+		}else for(;step<Tsteps;step++) update();
+		TstepsFinished = 1;
 	}
 	for(;measurement_step<measurements;measurement_step++){
 		for(step=0;step<stepsPerMeasurement;step++) update(); measure();

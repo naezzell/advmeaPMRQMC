@@ -140,6 +140,8 @@ double meanq = 0;
 double maxq = 0;
 double start_time;
 int save_data_flag = 0, mpi_rank = 0, mpi_size = 0, resume_calc = 0;
+bool dynamic_run_parameters = false;
+uint64_t dynamic_run_identity = 0;
 int p1, p2, init_parity;
 
 // The most recent measurement is kept separately from the binning arrays so
@@ -169,7 +171,11 @@ void save_QMC_data(int printout = 1){
 #else
         elapsed = (double)clock() / CLOCKS_PER_SEC - start_time;
 #endif
-        fout(elapsed);
+	fout(elapsed);
+	if(dynamic_run_parameters){
+		const uint64_t magic = UINT64_C(0x504d52414e4e4531);
+		fout(magic); fout(dynamic_run_identity); fout(run_beta); fout(run_tau); fout(run_gamma);
+	}
 	foutput.close(); if(printout) std::cout<<"done"<<std::endl; fflush(stdout);
 }
 
@@ -207,6 +213,18 @@ void load_QMC_data(){
 		fin(Energies); fin(Energies_backup); fin(eoccupied); fin(currEnergy); fin(valid_observable);
 		fin(currD); fin(old_currD); fin(currD_partial); fin(zero); fin(currWeight); fin(step); fin(measurement_step); 
 		fin(rng_seed); fin(meanq); fin(maxq); fin(elapsed); if(finput.gcount()==0) elapsed = 0;
+		if(dynamic_run_parameters){
+			uint64_t magic = 0, identity = 0;
+			fin(magic); fin(identity); fin(run_beta); fin(run_tau); fin(run_gamma);
+			if(!finput || magic != UINT64_C(0x504d52414e4e4531) || identity != dynamic_run_identity){
+				std::cout << "Error: checkpoint does not match the requested runtime beta annealing plan" << std::endl;
+#ifdef MPI_VERSION
+				MPI_Abort(MPI_COMM_WORLD,1);
+#else
+				exit(1);
+#endif
+			}
+		}
 		finput.close(); start_time -= elapsed;
 		if(mpi_size > 0){
 			if(TstepsFinished){

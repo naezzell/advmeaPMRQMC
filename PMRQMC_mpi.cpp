@@ -18,12 +18,15 @@
 
 #include<mpi.h>
 #include"mainqmc.hpp"
+#include"beta_anneal.hpp"
 
 double elapsed_time;
 double mean_derived_O[N_derived_observables], stdev_derived_O[N_derived_observables], jackknife_O[N_derived_observables], jackknife_sum[N_derived_observables], sgn_meanJ, sgn_varianceJ;
 double sgn_mean, sgn_variance, sgn_stdev;
 std::ofstream timeseries_file;
 bool timeseries_enabled = false;
+BetaAnnealPlan fixed_anneal_plan;
+double fixed_target_beta = run_beta, fixed_target_tau = run_tau;
 
 static void write_timeseries_header(){
 	if(mpi_rank != 0) return;
@@ -53,7 +56,17 @@ void compute(){
 			for(;step<stepsPerMeasurement;step++) update(); measure(); measurement_step++;
 		}
 	} else{
-		for(;step<Tsteps;step++) update(); TstepsFinished = 1;
+		if(fixed_anneal_plan.enabled){
+			for(;step<Tsteps;step++){
+				update(); uint64_t completed=static_cast<uint64_t>(step)+1;
+				if(fixed_anneal_plan.retarget_after(completed)){
+					double next_beta=fixed_anneal_plan.beta_at(completed,0);
+					retarget_run_parameters(next_beta,fixed_target_tau*next_beta/fixed_target_beta);
+				}
+			}
+			retarget_run_parameters(fixed_target_beta,fixed_target_tau);
+		}else for(;step<Tsteps;step++) update();
+		TstepsFinished = 1;
 	}
 	for(;measurement_step<measurements;measurement_step++){
 		for(step=0;step<stepsPerMeasurement;step++) update(); measure();
@@ -157,12 +170,32 @@ int main(int argc, char* argv[]){
 	MPI_Comm_rank(MPI_COMM_WORLD,&mpi_rank);
 	MPI_Comm_size(MPI_COMM_WORLD,&mpi_size);
 	std::string timeseries_prefix;
+	BetaAnnealOptions anneal_options;
+	bool target_beta_set=false, target_tau_set=false;
 	for(int arg=1;arg<argc;arg++){
 		if(std::string(argv[arg]) == "--timeseries-prefix" && arg+1<argc) timeseries_prefix = argv[++arg];
+		else if(std::string(argv[arg]) == "--target-beta" && arg+1<argc){ fixed_target_beta=std::atof(argv[++arg]); target_beta_set=true; }
+		else if(std::string(argv[arg]) == "--target-tau" && arg+1<argc){ fixed_target_tau=std::atof(argv[++arg]); target_tau_set=true; }
+		else if(std::string(argv[arg]) == "--beta-anneal") anneal_options.automatic=true;
+		else if(std::string(argv[arg]) == "--anneal-start-factor" && arg+1<argc){ anneal_options.start_factor=std::stod(argv[++arg]); anneal_options.start_factor_was_set=true; }
+		else if(std::string(argv[arg]) == "--anneal-interval" && arg+1<argc){ anneal_options.interval=std::strtoull(argv[++arg],NULL,10); anneal_options.interval_was_set=true; }
+		else if(std::string(argv[arg]) == "--beta-anneal-schedule" && arg+1<argc) anneal_options.schedule_file=argv[++arg];
 		else{
 			if(mpi_rank==0) std::cerr << "Unknown or incomplete option: " << argv[arg] << std::endl;
 			MPI_Finalize(); return 2;
 		}
+	}
+	if(target_beta_set && !target_tau_set) fixed_target_tau=fixed_target_beta/2.0;
+	try{
+		if(!std::isfinite(fixed_target_beta) || !(fixed_target_beta>0.0) || !std::isfinite(fixed_target_tau) || fixed_target_tau<0.0 || fixed_target_tau>fixed_target_beta)
+			throw std::runtime_error("target beta/tau must satisfy beta > 0 and 0 <= tau <= beta");
+		fixed_anneal_plan=make_beta_anneal_plan(anneal_options,std::vector<double>(1,fixed_target_beta),Tsteps,N);
+	}catch(const std::exception& error){ if(mpi_rank==0) std::cerr << "Error: " << error.what() << std::endl; MPI_Finalize(); return 2; }
+	dynamic_run_parameters=target_beta_set || target_tau_set || fixed_anneal_plan.enabled;
+	if(dynamic_run_parameters){
+		dynamic_run_identity=beta_anneal_hash(fixed_anneal_plan);
+		uint64_t bits=0; std::memcpy(&bits,&fixed_target_beta,sizeof(bits)); dynamic_run_identity^=bits;
+		std::memcpy(&bits,&fixed_target_tau,sizeof(bits)); dynamic_run_identity^=bits+UINT64_C(0x9e3779b97f4a7c15);
 	}
 	if(steps < Nbins*stepsPerMeasurement){
 		std::cout << "Error: steps cannot be smaller than Nbins*stepsPerMeasurement." << std::endl;
@@ -177,6 +210,10 @@ int main(int argc, char* argv[]){
 	MPI_Bcast(&resume_calc,1,MPI_INT,0,MPI_COMM_WORLD); init_rng();
 	divdiff dd(q+4,500); divdiff ddfs(q+4,500); divdiff dd1(q+4,500); divdiff dd2(q+4,500); 
 	d=&dd; dfs=&ddfs; ds1=&dd1; ds2=&dd2;
+	if(dynamic_run_parameters){
+		double initial_beta=fixed_anneal_plan.enabled ? fixed_anneal_plan.beta_at(0,0) : fixed_target_beta;
+		configure_run_parameters(initial_beta,fixed_target_tau*initial_beta/fixed_target_beta);
+	}
 	start_time = MPI_Wtime();
 	if(resume_calc){ load_QMC_data(); init_basic(); } else init();
 	if(!timeseries_prefix.empty()){

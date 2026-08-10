@@ -9,16 +9,16 @@ all: prepare.bin PMRQMC.bin PMRQMC_mpi.bin PMRQMC_pt_mpi.bin PMRQMC_qcpt_mpi.bin
 prepare.bin: prepare.cpp
 	$(CXX) $(CXXFLAGS) -o $@ $<
 
-PMRQMC.bin: PMRQMC.cpp mainqmc.hpp divdiff.hpp hamiltonian.hpp parameters.hpp
+PMRQMC.bin: PMRQMC.cpp mainqmc.hpp beta_anneal.hpp divdiff.hpp hamiltonian.hpp parameters.hpp
 	$(CXX) $(CXXFLAGS) -o $@ $<
 
-PMRQMC_mpi.bin: PMRQMC_mpi.cpp mainqmc.hpp divdiff.hpp hamiltonian.hpp parameters.hpp
+PMRQMC_mpi.bin: PMRQMC_mpi.cpp mainqmc.hpp beta_anneal.hpp divdiff.hpp hamiltonian.hpp parameters.hpp
 	$(MPICXX) $(CXXFLAGS) -o $@ $<
 
-PMRQMC_pt_mpi.bin: PMRQMC_pt_mpi.cpp pt_schedule.hpp mainqmc.hpp divdiff.hpp hamiltonian.hpp parameters.hpp
+PMRQMC_pt_mpi.bin: PMRQMC_pt_mpi.cpp pt_schedule.hpp beta_anneal.hpp mainqmc.hpp divdiff.hpp hamiltonian.hpp parameters.hpp
 	$(MPICXX) $(CXXFLAGS) -o $@ $<
 
-PMRQMC_qcpt_mpi.bin: PMRQMC_qcpt_mpi.cpp PMRQMC_pt_mpi.cpp pt_schedule.hpp mainqmc.hpp divdiff.hpp hamiltonian.hpp parameters.hpp
+PMRQMC_qcpt_mpi.bin: PMRQMC_qcpt_mpi.cpp PMRQMC_pt_mpi.cpp pt_schedule.hpp beta_anneal.hpp mainqmc.hpp divdiff.hpp hamiltonian.hpp parameters.hpp
 	$(MPICXX) $(CXXFLAGS) -DPMR_QCPT -o $@ $<
 
 test: tests/pt_components_test
