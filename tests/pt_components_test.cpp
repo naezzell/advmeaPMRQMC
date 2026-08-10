@@ -34,6 +34,7 @@ int main(int argc, char** argv){
 	assert(std::fabs(linear.beta_at(0,0)-0.001) < 1e-14);
 	assert(std::fabs(linear.beta_at(50,1)-2.002) < 1e-14);
 	assert(linear.beta_at(100,1)==4.0 && beta_anneal_hash(linear)!=0);
+	assert(std::fabs(beta_anneal_tau(1.5,0.75,3.0)-0.375) < 1e-14);
 	assert(!record_pt_endpoint(0,origin,seen_opposite));
 	assert(!record_pt_endpoint(4,origin,seen_opposite));
 	assert(record_pt_endpoint(0,origin,seen_opposite));

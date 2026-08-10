@@ -424,14 +424,14 @@ int main(int argc, char** argv){
 		d=&dd; dfs=&ddfs; ds1=&dd1; ds2=&dd2;
 #ifdef PMR_QCPT
 		double initial_beta=anneal.enabled ? anneal.beta_at(0,temperature) : schedule.beta[temperature];
-		configure_run_parameters(initial_beta,schedule.tau[temperature]*initial_beta/schedule.beta[temperature],schedule.gamma[temperature]);
+		configure_run_parameters(initial_beta,beta_anneal_tau(schedule.tau[temperature],initial_beta,schedule.beta[temperature]),schedule.gamma[temperature]);
 #else
 		// A legacy beta-only schedule has no gamma coordinate.  When the
 		// generated Hamiltonian is split, retain the compile-time gamma from
 		// parameters.hpp rather than interpreting the schedule's compatibility
 		// placeholder as a physical value.
 		double initial_beta=anneal.enabled ? anneal.beta_at(0,temperature) : schedule.beta[temperature];
-		configure_run_parameters(initial_beta,schedule.tau[temperature]*initial_beta/schedule.beta[temperature]);
+		configure_run_parameters(initial_beta,beta_anneal_tau(schedule.tau[temperature],initial_beta,schedule.beta[temperature]));
 #endif
 		configure_valid_observables();
 		init_rng();
@@ -447,7 +447,7 @@ int main(int argc, char** argv){
 		if(resume && anneal.enabled){
 			uint64_t progress=std::min<uint64_t>(completed_updates,static_cast<uint64_t>(Tsteps));
 			double restored_beta=anneal.beta_at(progress,temperature);
-			retarget_pt_parameters(restored_beta,schedule.tau[temperature]*restored_beta/schedule.beta[temperature],schedule.gamma[temperature]);
+			retarget_pt_parameters(restored_beta,beta_anneal_tau(schedule.tau[temperature],restored_beta,schedule.beta[temperature]),schedule.gamma[temperature]);
 		}
 		export_PMR_snapshot(current); received.resize(current.size());
 		const uint64_t total_updates = static_cast<uint64_t>(Tsteps) + static_cast<uint64_t>(steps);
@@ -458,7 +458,7 @@ int main(int argc, char** argv){
 			bool annealing_update=anneal.enabled && update_number < static_cast<uint64_t>(Tsteps);
 			if(annealing_update && anneal.retarget_after(update_number+1)){
 				double next_beta=anneal.beta_at(update_number+1,temperature);
-				retarget_pt_parameters(next_beta,schedule.tau[temperature]*next_beta/schedule.beta[temperature],schedule.gamma[temperature]);
+				retarget_pt_parameters(next_beta,beta_anneal_tau(schedule.tau[temperature],next_beta,schedule.beta[temperature]),schedule.gamma[temperature]);
 			}
 			if(update_number >= static_cast<uint64_t>(Tsteps) &&
 				((update_number-static_cast<uint64_t>(Tsteps)+1) % static_cast<uint64_t>(stepsPerMeasurement) == 0)){

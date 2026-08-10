@@ -82,7 +82,7 @@ int main(int argc, char* argv[]){
 	d=&dd; dfs=&ddfs; ds1=&dd1; ds2=&dd2;
 	if(dynamic_run_parameters){
 		double initial_beta=anneal.enabled ? anneal.beta_at(0,0) : options.target_beta;
-		configure_run_parameters(initial_beta,options.target_tau*initial_beta/options.target_beta);
+		configure_run_parameters(initial_beta,beta_anneal_tau(options.target_tau,initial_beta,options.target_beta));
 	}
 	init_rng();
 	if(check_QMC_data()){
@@ -101,7 +101,7 @@ int main(int argc, char* argv[]){
 				update(); uint64_t completed=static_cast<uint64_t>(step)+1;
 				if(anneal.retarget_after(completed)){
 					double next_beta=anneal.beta_at(completed,0);
-					retarget_run_parameters(next_beta,options.target_tau*next_beta/options.target_beta);
+					retarget_run_parameters(next_beta,beta_anneal_tau(options.target_tau,next_beta,options.target_beta));
 				}
 			}
 			retarget_run_parameters(options.target_beta,options.target_tau);

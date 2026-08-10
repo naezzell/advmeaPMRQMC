@@ -61,7 +61,7 @@ void compute(){
 				update(); uint64_t completed=static_cast<uint64_t>(step)+1;
 				if(fixed_anneal_plan.retarget_after(completed)){
 					double next_beta=fixed_anneal_plan.beta_at(completed,0);
-					retarget_run_parameters(next_beta,fixed_target_tau*next_beta/fixed_target_beta);
+					retarget_run_parameters(next_beta,beta_anneal_tau(fixed_target_tau,next_beta,fixed_target_beta));
 				}
 			}
 			retarget_run_parameters(fixed_target_beta,fixed_target_tau);
@@ -212,7 +212,7 @@ int main(int argc, char* argv[]){
 	d=&dd; dfs=&ddfs; ds1=&dd1; ds2=&dd2;
 	if(dynamic_run_parameters){
 		double initial_beta=fixed_anneal_plan.enabled ? fixed_anneal_plan.beta_at(0,0) : fixed_target_beta;
-		configure_run_parameters(initial_beta,fixed_target_tau*initial_beta/fixed_target_beta);
+		configure_run_parameters(initial_beta,beta_anneal_tau(fixed_target_tau,initial_beta,fixed_target_beta));
 	}
 	start_time = MPI_Wtime();
 	if(resume_calc){ load_QMC_data(); init_basic(); } else init();

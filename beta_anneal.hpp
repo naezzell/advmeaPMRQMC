@@ -51,6 +51,13 @@ inline bool beta_anneal_close(double left, double right){
 	return std::fabs(left-right) <= 1e-12*std::max(1.0,std::max(std::fabs(left),std::fabs(right)));
 }
 
+inline double beta_anneal_tau(double target_tau, double beta_value, double target_beta){
+	if(!std::isfinite(target_tau) || !std::isfinite(beta_value) ||
+	   !std::isfinite(target_beta) || !(target_beta > 0.0))
+		throw std::runtime_error("cannot scale tau with non-finite parameters or non-positive target beta");
+	return target_tau*beta_value/target_beta;
+}
+
 inline BetaAnnealPlan make_beta_anneal_plan(const BetaAnnealOptions& options,
 		const std::vector<double>& targets, uint64_t updates, uint64_t default_interval){
 	BetaAnnealPlan plan;
