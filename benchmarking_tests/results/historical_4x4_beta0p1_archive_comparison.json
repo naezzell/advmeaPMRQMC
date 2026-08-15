@@ -1,0 +1,71 @@
+{
+  "all_within_three_combined_se": true,
+  "archive_csv": "data_plotting_misc/data/prb_fig3_tfim_data.csv",
+  "archive_csv_sha256": "c7542f31b67150844adf003630e363d8ae1567db35003d6292e5c64e74371632",
+  "archive_profile": "paper1_four_by_four",
+  "campaign_summary": "benchmarking_tests/artifacts/historical_anchors_v2/summary.json",
+  "campaign_summary_sha256": "9184ab3823cc238db06e03b0410987c3021a7dfd0aa6a75ea0ab1a259b530e14",
+  "comparisons": {
+    "energy": {
+      "archived": {
+        "mean": -4.84545405,
+        "standard_error": 0.01079747452379948
+      },
+      "combined_standard_error": 0.06779882113426663,
+      "current": {
+        "cochran_q": 1.760813017607416e-28,
+        "mean": -4.8762354655164275,
+        "runs": 1,
+        "standard_error": 0.06693350947846811
+      },
+      "difference": -0.030781415516427657,
+      "within_three_combined_se": true,
+      "z_score": -0.4540110727805889
+    },
+    "offdiagonal_energy_susceptibility": {
+      "archived": {
+        "mean": 3.42926031,
+        "standard_error": 0.0233064947
+      },
+      "combined_standard_error": 0.41039514036903857,
+      "current": {
+        "cochran_q": 0.0,
+        "mean": 3.782341376218186,
+        "runs": 1,
+        "standard_error": 0.4097328136033552
+      },
+      "difference": 0.353081066218186,
+      "within_three_combined_se": true,
+      "z_score": 0.860344169525706
+    },
+    "offdiagonal_fidelity_susceptibility": {
+      "archived": {
+        "mean": 0.0427971761,
+        "standard_error": 0.000291190129
+      },
+      "combined_standard_error": 0.005128977109426443,
+      "current": {
+        "cochran_q": 0.0,
+        "mean": 0.04721081274050366,
+        "runs": 1,
+        "standard_error": 0.005120704492332416
+      },
+      "difference": 0.0044136366405036626,
+      "within_three_combined_se": true,
+      "z_score": 0.8605296039227646
+    }
+  },
+  "coordinate": {
+    "L": 4,
+    "beta": 0.1,
+    "lambda": 1.0
+  },
+  "limitations": [
+    "Current estimates are inverse-variance combinations of independently jackknifed runs.",
+    "Diagonal/off-diagonal energy errors are combined without archived covariance."
+  ],
+  "run_ids": [
+    "561575c5085e1fb4"
+  ],
+  "schema_version": 1
+}

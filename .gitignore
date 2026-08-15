@@ -37,6 +37,8 @@ H.txt
 O.txt
 hamiltonian.hpp
 parameters.hpp
+generated_instances/
+run_outputs/
 
 # submit scripts
 job_file.sh
@@ -59,3 +61,9 @@ data_and_plotting/plot_scripts/figures/*
 
 # old analysis ideas
 *old_analysis_ideas*
+
+# Benchmark campaign outputs are reproducible but can be very large.  Compact
+# summaries and plots are copied into benchmarking_tests/results for review;
+# raw per-measurement traces stay in the archive named by each manifest.
+benchmarking_tests/artifacts/
+benchmarking_tests/report/build/

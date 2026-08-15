@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <numeric>
 #include <cmath>
+#include <cstdio>
 
 using namespace std;
 
@@ -511,6 +512,155 @@ int none(dbitset v){
     return std::all_of(v.begin(), v.end(), [](int i) { return i==0; });
 }
 
+struct SplitHamiltonianTerm {
+    dbitset permutation;
+    vector<int> diagonal;
+    complex<double> fixed;
+    complex<double> gamma;
+};
+
+extern ofstream output;
+void output_complex(complex<double> z);
+static string split_fixed_observable_file;
+
+static void collect_split_component(const PZdata& data, bool is_gamma,
+                                    vector<SplitHamiltonianTerm>& terms){
+    for(size_t p=0; p<data.Ps.size(); ++p){
+        for(size_t t=0; t<data.Z_track[p].size(); ++t){
+            int index = data.Z_track[p][t];
+            complex<double> coefficient = data.coeffs[index];
+            vector<int> diagonal = data.Zs[index];
+            size_t found = terms.size();
+            for(size_t i=0; i<terms.size(); ++i){
+                if(terms[i].permutation == data.Ps[p] && Z_compare(terms[i].diagonal, diagonal)){
+                    found = i; break;
+                }
+            }
+            if(found == terms.size()){
+                SplitHamiltonianTerm term;
+                term.permutation = data.Ps[p]; term.diagonal = diagonal;
+                term.fixed = complex<double>(0.0,0.0); term.gamma = complex<double>(0.0,0.0);
+                terms.push_back(term);
+            }
+            if(is_gamma) terms[found].gamma += coefficient;
+            else terms[found].fixed += coefficient;
+        }
+    }
+}
+
+// Generate the split representation used by QCPT.  The permutation basis is
+// the union of both components, so a fixed quantum term remains available at
+// Gamma=0 and terms that cancel at one parameter value are not lost.
+static void write_split_hamiltonian(const string& fixed_file, const string& gamma_file){
+    vector<SplitHamiltonianTerm> terms;
+    collect_split_component(PZcomp(data_extract(fixed_file)), false, terms);
+    collect_split_component(PZcomp(data_extract(gamma_file)), true, terms);
+    vector<SplitHamiltonianTerm> kept;
+    for(size_t i=0; i<terms.size(); ++i)
+        if(abs(terms[i].fixed) > 1e-8 || abs(terms[i].gamma) > 1e-8) kept.push_back(terms[i]);
+    sort(kept.begin(), kept.end(), [](const SplitHamiltonianTerm& a, const SplitHamiltonianTerm& b){
+        return BitsetComparator()(a.permutation,b.permutation);
+    });
+    if(kept.empty()) throw runtime_error("split Hamiltonian contains no nonzero terms");
+
+    vector<dbitset> permutations;
+    for(size_t i=0; i<kept.size(); ++i){
+        bool found = false;
+        for(size_t p=0; p<permutations.size(); ++p) if(permutations[p] == kept[i].permutation) found = true;
+        if(!found) permutations.push_back(kept[i].permutation);
+    }
+    bool has_identity = !permutations.empty() && none(permutations.front());
+    vector<dbitset> offdiag_for_cycles;
+    for(size_t i=has_identity ? 1 : 0; i<permutations.size(); ++i) offdiag_for_cycles.push_back(permutations[i]);
+    vector<vector<int>> permutation_bits = bit_to_intvec(downsize_bitset(offdiag_for_cycles));
+    vector<vector<int>> nullspace;
+    if(!permutation_bits.empty()){
+        nullspace = Null2(permutation_bits);
+        while(!nullspace.empty() && cycle_minimize(nullspace));
+    }
+
+    output << "#define PMR_SPLIT_HAMILTONIAN 1\n";
+    output << "#define N        " << no_qubit << "\n";
+    output << "#define Nop      " << offdiag_for_cycles.size() << "\n";
+    output << "#define Ncycles  " << nullspace.size() << "\n\n";
+    output << "std::bitset<N> P_matrix[Nop] = {";
+    for(size_t i=0; i<offdiag_for_cycles.size(); ++i){
+        output << "std::bitset<N>(\"";
+        for(int j=static_cast<int>(offdiag_for_cycles[i].size())-1; j>=0; --j) output << (offdiag_for_cycles[i][j] ? '1' : '0');
+        output << "\")" << (i+1<offdiag_for_cycles.size() ? ", " : "");
+    }
+    output << "};\n";
+    output << "std::bitset<Nop> cycles[Ncycles] = {";
+    for(size_t i=0; i<nullspace.size(); ++i){
+        output << "std::bitset<Nop>(\"";
+        for(int j=static_cast<int>(offdiag_for_cycles.size())-1; j>=0; --j) output << nullspace[i][j];
+        output << "\")" << (i+1<nullspace.size() ? ", " : "");
+    }
+    output << "};\n\n";
+
+    vector<dbitset>& unique_permutations = permutations;
+    has_identity = !unique_permutations.empty() && none(unique_permutations.front());
+    vector<SplitHamiltonianTerm> identity_terms;
+    if(has_identity) for(size_t i=0; i<kept.size(); ++i)
+        if(none(kept[i].permutation)) identity_terms.push_back(kept[i]);
+    size_t diagonal_count = identity_terms.size();
+    output << "const int D0_size = " << diagonal_count << ";\n";
+    output << "std::complex<double> D0_fixed_coeff[D0_size] = {";
+    for(size_t i=0; i<identity_terms.size(); ++i) output_complex(identity_terms[i].fixed), output << (i+1<identity_terms.size() ? ", " : "");
+    output << "};\n";
+    output << "std::complex<double> D0_gamma_coeff[D0_size] = {";
+    for(size_t i=0; i<identity_terms.size(); ++i) output_complex(identity_terms[i].gamma), output << (i+1<identity_terms.size() ? ", " : "");
+    output << "};\n";
+    output << "std::bitset<N> D0_product[D0_size] = {";
+    for(size_t i=0; i<identity_terms.size(); ++i){
+        output << "std::bitset<N>(\"" << int_to_str(identity_terms[i].diagonal) << "\")" << (i+1<identity_terms.size() ? ", " : "");
+    }
+    output << "};\n\n";
+
+    vector<dbitset> offdiag_permutations;
+    for(size_t p=has_identity ? 1 : 0; p<unique_permutations.size(); ++p) offdiag_permutations.push_back(unique_permutations[p]);
+    size_t dmax = 1;
+    vector<size_t> dsize;
+    for(size_t p=0; p<offdiag_permutations.size(); ++p){
+        size_t count = 0;
+        for(size_t i=0; i<kept.size(); ++i) if(kept[i].permutation == offdiag_permutations[p]) count++;
+        dsize.push_back(count); dmax = max(dmax,count);
+    }
+    if(offdiag_permutations.empty()) dmax = 1;
+    output << "#define PMR_SPLIT_NOP " << offdiag_permutations.size() << "\n";
+    output << "const int D_maxsize = " << dmax << ";\n";
+    output << "int D_size[Nop] = {";
+    for(size_t i=0; i<dsize.size(); ++i) output << dsize[i] << (i+1<dsize.size() ? ", " : "");
+    output << "};\n";
+    output << "std::complex<double> D_fixed_coeff[Nop][D_maxsize] = {";
+    for(size_t p=0; p<offdiag_permutations.size(); ++p){
+        output << "{"; size_t seen = 0;
+        for(size_t i=0; i<kept.size(); ++i) if(kept[i].permutation == offdiag_permutations[p]){
+            output_complex(kept[i].fixed); if(++seen<dsize[p]) output << ", ";
+        }
+        output << "}" << (p+1<offdiag_permutations.size() ? ", " : "");
+    }
+    output << "};\n";
+    output << "std::complex<double> D_gamma_coeff[Nop][D_maxsize] = {";
+    for(size_t p=0; p<offdiag_permutations.size(); ++p){
+        output << "{"; size_t seen = 0;
+        for(size_t i=0; i<kept.size(); ++i) if(kept[i].permutation == offdiag_permutations[p]){
+            output_complex(kept[i].gamma); if(++seen<dsize[p]) output << ", ";
+        }
+        output << "}" << (p+1<offdiag_permutations.size() ? ", " : "");
+    }
+    output << "};\n";
+    output << "std::bitset<N> D_product[Nop][D_maxsize] = {";
+    for(size_t p=0; p<offdiag_permutations.size(); ++p){
+        output << "{"; size_t seen = 0;
+        for(size_t i=0; i<kept.size(); ++i) if(kept[i].permutation == offdiag_permutations[p]){
+            output << "std::bitset<N>(\"" << int_to_str(kept[i].diagonal) << "\")" << (++seen<dsize[p] ? ", " : "");
+        }
+        output << "}" << (p+1<offdiag_permutations.size() ? ", " : "");
+    }
+    output << "};\n";
+}
+
 ofstream output;
 
 void output_complex(complex<double> z){
@@ -789,6 +939,23 @@ void main2(int argc , char* argv[]){
     vector<vector<vector<int>>> Ps_binary_Op(Nobservables);
     for(int O=0;O<Nobservables;O++) Ps_binary_Op[O] = bit_to_intvec(Ps_Op_nontrivial[O]);
 
+    // In a split Hamiltonian the union permutation basis can contain a
+    // gamma-only operator whose runtime coefficient vanishes at Gamma=0.
+    // When an observable has another valid representation, prefer a relation
+    // made from fixed-supported permutations so that the Gamma=0 estimator
+    // remains connected to the quantum H_fixed ensemble.
+    vector<bool> ham_permutation_supported_by_fixed(Ps_binary_Ham.size(), false);
+    if(!split_fixed_observable_file.empty()){
+        PZdata fixed_observable_hamiltonian = PZcomp(data_extract(split_fixed_observable_file));
+        for(size_t i=0;i<Ps_binary_Ham.size();i++){
+            const dbitset& union_permutation = Ps_bit_Ham[i + (D0_exists ? 1 : 0)];
+            for(size_t j=0;j<fixed_observable_hamiltonian.Ps.size();j++)
+                if(union_permutation == fixed_observable_hamiltonian.Ps[j]){
+                    ham_permutation_supported_by_fixed[i] = true; break;
+                }
+        }
+    }
+
     // Combine the permutations of Hamiltonians with each permutation from the operator and compute the nullspace
     int no_ps = Ps_Ham_nontrivial.size();
     vector<int> no_ops(Nobservables);
@@ -806,20 +973,36 @@ void main2(int argc , char* argv[]){
         Ps_bin_total.push_back(Ps_binary_Op[O][k]);
         nullspace_k = Null2(Ps_bin_total);
         while(Eig_minimize(nullspace_k));
-        int min_ops=100000 , min_index;
-        for(int i = 0; i< nullspace_k.size(); i++){
-            int sum_ops = 0;
-            if(nullspace_k[i][no_ps] == 1){
-                permutation_found = true;
-                sum_ops = Int_sum(nullspace_k[i]);
-                if(sum_ops < min_ops){
-                    min_ops = sum_ops;
-                    min_index = i;
-                }
+        vector<vector<int>> candidates;
+        size_t basis_count = nullspace_k.size();
+        if(basis_count < 20){
+            const size_t combinations = size_t(1) << basis_count;
+            for(size_t mask=0;mask<combinations;mask++){
+                vector<int> candidate(no_ps+1,0);
+                for(size_t b=0;b<basis_count;b++) if(mask & (size_t(1)<<b))
+                    for(int column=0;column<=no_ps;column++) candidate[column] ^= nullspace_k[b][column];
+                if(candidate[no_ps] == 1) candidates.push_back(candidate);
+            }
+        }else{
+            candidates = nullspace_k;
+        }
+        int min_fixed_missing=100000, min_ops=100000;
+        vector<int> best_relation;
+        for(size_t i=0;i<candidates.size();i++){
+            if(candidates[i][no_ps] != 1) continue;
+            permutation_found = true;
+            int fixed_missing = 0, sum_ops = 0;
+            for(int column=0;column<no_ps;column++) if(candidates[i][column]){
+                sum_ops++;
+                if(!split_fixed_observable_file.empty() && !ham_permutation_supported_by_fixed[column]) fixed_missing++;
+            }
+            if(fixed_missing < min_fixed_missing ||
+               (fixed_missing == min_fixed_missing && sum_ops < min_ops)){
+                min_fixed_missing = fixed_missing; min_ops = sum_ops; best_relation = candidates[i];
             }
         }
         if(permutation_found){
-            Op_to_Ham[O].push_back(nullspace_k[min_index]);
+            Op_to_Ham[O].push_back(best_relation);
         }
         else{
             Op_to_Ham[O].push_back(zero_vector);
@@ -1013,12 +1196,31 @@ void main2(int argc , char* argv[]){
 }
 
 int main(int argc , char* argv[]){
-    if(argc < 2){ cout << "Usage: ./prepare.bin hamiltonian.txt observable_1.txt observable_2.txt ..." << endl; exit(1);}
+    if(argc < 2){ cout << "Usage: ./prepare.bin hamiltonian.txt observable_1.txt observable_2.txt ...\n"
+        << "       ./prepare.bin --hamiltonian-fixed H_fixed.txt --hamiltonian-gamma H_gamma.txt [observable ...]" << endl; exit(1);}
     cout << "Preparing PMR for the Hamiltonian and computing the list of fundamental cycles...";
     output.open("hamiltonian.hpp");
-    main1(argc, argv);
+    bool split = argc >= 5 && string(argv[1]) == "--hamiltonian-fixed" && string(argv[3]) == "--hamiltonian-gamma";
+    if(split) write_split_hamiltonian(argv[2],argv[4]);
+    else main1(argc, argv);
     cout << "done" << endl;
-    if(argc >= 3){
+    if(split && argc > 5){
+       const string union_file = "hamiltonian_qcpt_union.tmp";
+       ifstream fixed_input(argv[2]); ifstream gamma_input(argv[4]);
+       ofstream union_output(union_file.c_str());
+       if(!fixed_input || !gamma_input || !union_output) throw runtime_error("cannot create QCPT Hamiltonian union for observables");
+       union_output << fixed_input.rdbuf() << '\n' << gamma_input.rdbuf();
+       union_output.close();
+       vector<string> observable_args;
+       observable_args.push_back("prepare.bin"); observable_args.push_back(union_file);
+       for(int i=5;i<argc;i++) observable_args.push_back(argv[i]);
+       vector<char*> observable_argv;
+       for(size_t i=0;i<observable_args.size();i++) observable_argv.push_back(const_cast<char*>(observable_args[i].c_str()));
+       split_fixed_observable_file = argv[2];
+       main2(static_cast<int>(observable_argv.size()),observable_argv.data());
+       split_fixed_observable_file.clear();
+       std::remove(union_file.c_str());
+    } else if(!split && argc >= 3){
        cout << "Preparing PMR for the observables and their representation via the permutation operators of the Hamiltonian...";
        main2(argc, argv);
        cout << "done" << endl;

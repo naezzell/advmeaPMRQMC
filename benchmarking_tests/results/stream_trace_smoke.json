@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "protocol_id": "STREAM-SMOKE-20260809",
+  "date": "2026-08-09",
+  "source_commit": "commit containing this artifact",
+  "model": "two-spin TFIM, H=-Z1Z2-0.7(X1+X2)",
+  "observable": "(X1+X2)/2",
+  "betas": [0.25, 0.6, 1.3, 3.0],
+  "rng_seed_offset": 7300,
+  "mpi_rank_seeds": [7300, 7301, 7302, 7303],
+  "thermalization_updates": 100,
+  "sampling_updates": 2000,
+  "steps_per_measurement": 10,
+  "updates_per_exchange": 2,
+  "hardware": {
+    "cpu": "Intel Core i5-6600K @ 3.50GHz",
+    "logical_cpus": 4
+  },
+  "correctness": {
+    "rule": "absolute error <= max(0.03, 6*reported_SE)",
+    "fixed_beta_3": {"exact": 0.7294660307370525, "mean": 0.781644927, "se": 0.0610213501, "passed": true},
+    "pt": [
+      {"beta": 0.25, "exact": 0.16980369164271777, "mean": 0.19422435877000346, "se": 0.08024898044960771, "passed": true},
+      {"beta": 0.6, "exact": 0.3604020278276869, "mean": 0.43078178834203973, "se": 0.07575020128744495, "passed": true},
+      {"beta": 1.3, "exact": 0.5615776598777671, "mean": 0.6281935771668637, "se": 0.06657684309097643, "passed": true},
+      {"beta": 3.0, "exact": 0.7294660307370525, "mean": 0.6749991418261447, "se": 0.06996057606734779, "passed": true}
+    ]
+  },
+  "swap_acceptance": [0.725714, 0.659048, 0.500952],
+  "round_trips": 134,
+  "raw_trace_archive": {
+    "path": "/tmp/pmr_stream_compile",
+    "retention": "ephemeral smoke artifact; regenerate with the recorded command",
+    "files": [
+      {"name": "fixed_stream.rank0.csv", "bytes": 26182, "sha256": "03c1a42be22b3f645ef73bb42360494039048252a72fb339935b4099731a1816"},
+      {"name": "pt_stream.rank0.csv", "bytes": 22367, "sha256": "b5831b00ab5ded8d62e0bfd74e2c49a105fdc7aeb5d53a05e2519494301c1520"},
+      {"name": "pt_stream.rank1.csv", "bytes": 29346, "sha256": "da946055fad291c20ced699957882c3eb15e79b94103726137b1bf27e0fa5411"},
+      {"name": "pt_stream.rank2.csv", "bytes": 27932, "sha256": "04967ee6116175c136cfec27e2299aaf2b04c26885381ed1be30f3d0906a61a6"},
+      {"name": "pt_stream.rank3.csv", "bytes": 26557, "sha256": "69b2588db31d9e86fce8f7d646888063386d170423419e6474b420a0e1a3b92d"}
+    ]
+  },
+  "command": "python3 experiments/validate_pt_minimal.py --Tsteps 100 --steps 2000 --steps-per-measurement 10 --updates-per-exchange 2 --oversubscribe /tmp/pmr_stream_compile"
+}

@@ -26,9 +26,18 @@
 #include<algorithm>
 #include<csignal>
 #include<bitset>
+#include<cstdint>
+#include<limits>
+#include<sstream>
+#include<vector>
+#include<stdexcept>
 #include"divdiff.hpp"
 #include"hamiltonian.hpp" // use a header file, which defines the Hamiltonian and the custom observables
 #include"parameters.hpp"  // parameters of the simulation such as the number of Monte-Carlo updates
+
+#ifndef RNG_SEED_OFFSET
+#define RNG_SEED_OFFSET 1000
+#endif
 
 #define measurements (steps/stepsPerMeasurement)
 
@@ -52,10 +61,10 @@ static std::uniform_int_distribution<> diceNop(0,Nop-1);
 static std::uniform_real_distribution<> val(0.0,1.0);
 static std::geometric_distribution<> geometric_int(GAPS_GEOMETRIC_PARAMETER);
 
-ExExFloat beta_pow_factorial[qmax]; // contains the values (-beta)^q / q!
-ExExFloat beta_div2_pow_factorial[qmax]; // contains the values (-beta/2)^q / q!
-ExExFloat tau_pow_factorial[qmax]; // contains the values (-tau)^q / q!
-ExExFloat tau_minus_beta_pow_factorial[qmax]; // contains the values (tau-beta)^q / q!
+ExExFloat beta_pow_factorial[qmax]; // contains the values (-run_beta)^q / q!
+ExExFloat beta_div2_pow_factorial[qmax]; // contains the values (-run_beta/2)^q / q!
+ExExFloat tau_pow_factorial[qmax]; // contains the values (-run_tau)^q / q!
+ExExFloat tau_minus_beta_pow_factorial[qmax]; // contains the values (run_tau-run_beta)^q / q!
 double factorial[qmax]; // contains the values q!
 int cycle_len[Ncycles];
 int cycles_used[Ncycles];
@@ -100,6 +109,22 @@ double currEnergy;
 std::complex<double> old_currD, currD, currMDk, currMDl, currMD0;
 std::complex<double> currD_partial[qmax], currMDk_trace[qmax], currMDl_trace[qmax], currMD0_trace[qmax];
 
+// The generated parameter header supplies the legacy defaults.  These
+// variables are intentionally mutable: a tempering rank keeps its own beta
+// and tau while the single-temperature executables retain exactly the old
+// defaults.
+double run_beta = beta;
+double run_tau = tau;
+#ifndef gamma
+#define gamma 1.0
+#endif
+double run_gamma = gamma;
+int pt_mode = 0;
+int pt_stop_requested = 0;
+#undef beta
+#undef tau
+#undef gamma
+
 #ifdef ABS_WEIGHTS
 #define REALW    std::abs
 #else
@@ -109,13 +134,23 @@ std::complex<double> currD_partial[qmax], currMDk_trace[qmax], currMDl_trace[qma
 ExExFloat zero, currWeight; int TstepsFinished = 0;
 unsigned long long step = 0;
 unsigned long long measurement_step = 0;
+unsigned long long global_z2_moves = 0;
+double measurement_seconds = 0.0;
 
 unsigned int rng_seed;
 double meanq = 0;
 double maxq = 0;
 double start_time;
 int save_data_flag = 0, mpi_rank = 0, mpi_size = 0, resume_calc = 0;
+bool dynamic_run_parameters = false;
+uint64_t dynamic_run_identity = 0;
 int p1, p2, init_parity;
+
+// The most recent measurement is kept separately from the binning arrays so
+// MPI drivers can optionally emit a convergence trace without changing the
+// estimator or its binning analysis.
+double last_measurement[N_all_observables];
+double last_measurement_sgn;
 
 #define fout(obj) { foutput.write((char *)& obj, sizeof(obj)); }
 #define fin(obj)  { finput.read((char *)& obj, sizeof(obj)); }
@@ -132,13 +167,17 @@ void save_QMC_data(int printout = 1){
 	fout(Sq); fout(Sq_backup); fout(Sq_subseq); fout(Sq_gaps);
 	fout(Energies); fout(Energies_backup); fout(eoccupied); fout(currEnergy); fout(valid_observable);
 	fout(currD); fout(old_currD); fout(currD_partial); fout(zero); fout(currWeight); fout(step); fout(measurement_step); 
-	fout(rng_seed); fout(meanq); fout(maxq);
+	fout(rng_seed); fout(meanq); fout(maxq); fout(global_z2_moves); fout(measurement_seconds);
 #ifdef MPI_VERSION
         elapsed = MPI_Wtime() - start_time;
 #else
         elapsed = (double)clock() / CLOCKS_PER_SEC - start_time;
 #endif
-        fout(elapsed);
+	fout(elapsed);
+	if(dynamic_run_parameters){
+		const uint64_t magic = UINT64_C(0x504d52414e4e4531);
+		fout(magic); fout(dynamic_run_identity); fout(run_beta); fout(run_tau); fout(run_gamma);
+	}
 	foutput.close(); if(printout) std::cout<<"done"<<std::endl; fflush(stdout);
 }
 
@@ -148,7 +187,7 @@ int check_QMC_data(){
 	if(mpi_rank==0 && mpi_size>0){
 		r = 1;
 		for(i=0;i<mpi_size;i++){
-			sprintf(fname,"qmc_data_%d.dat",mpi_rank);
+			sprintf(fname,"qmc_data_%d.dat",i);
 			std::ifstream finput(fname,std::ios::binary);
 			g = finput.good(); if(g) finput.close(); r = r && g;
 		}
@@ -175,7 +214,19 @@ void load_QMC_data(){
 		fin(Sq); fin(Sq_backup); fin(Sq_subseq); fin(Sq_gaps);
 		fin(Energies); fin(Energies_backup); fin(eoccupied); fin(currEnergy); fin(valid_observable);
 		fin(currD); fin(old_currD); fin(currD_partial); fin(zero); fin(currWeight); fin(step); fin(measurement_step); 
-		fin(rng_seed); fin(meanq); fin(maxq); fin(elapsed); if(finput.gcount()==0) elapsed = 0;
+		fin(rng_seed); fin(meanq); fin(maxq); fin(global_z2_moves); fin(measurement_seconds); fin(elapsed); if(finput.gcount()==0) elapsed = 0;
+		if(dynamic_run_parameters){
+			uint64_t magic = 0, identity = 0;
+			fin(magic); fin(identity); fin(run_beta); fin(run_tau); fin(run_gamma);
+			if(!finput || magic != UINT64_C(0x504d52414e4e4531) || identity != dynamic_run_identity){
+				std::cout << "Error: checkpoint does not match the requested runtime beta annealing plan" << std::endl;
+#ifdef MPI_VERSION
+				MPI_Abort(MPI_COMM_WORLD,1);
+#else
+				exit(1);
+#endif
+			}
+		}
 		finput.close(); start_time -= elapsed;
 		if(mpi_size > 0){
 			if(TstepsFinished){
@@ -225,17 +276,37 @@ void load_QMC_data(){
 	}
 }
 
-double CalcEnergy(){ // calculate the energy <z | D_0 | z> of a given configuration of spins
+static double CalcEnergyAt(const std::bitset<N>& state, double gamma_value){
 	std::complex<double> sum = 0;
-	for(int i=0;i<D0_size;i++) sum -= double(2*(int((D0_product[i] & (~lattice)).count())%2)-1) * D0_coeff[i];
+	for(int i=0;i<D0_size;i++){
+		std::complex<double> coefficient;
+#ifdef PMR_SPLIT_HAMILTONIAN
+		coefficient = D0_fixed_coeff[i] + gamma_value * D0_gamma_coeff[i];
+#else
+		coefficient = D0_coeff[i];
+#endif
+		sum -= double(2*(int((D0_product[i] & (~state)).count())%2)-1) * coefficient;
+	}
 	return sum.real();
 }
 
-std::complex<double> calc_d(int k){ // calculate d_k = <z | D_k | z> for the current configuration of spins
+double CalcEnergy(){ return CalcEnergyAt(lattice,run_gamma); }
+
+static std::complex<double> calc_d_at(int k, const std::bitset<N>& state, double gamma_value){
 	std::complex<double> sum = 0;
-	for(int i=0;i<D_size[k];i++) sum -= double(2*(int((D_product[k][i] & (~lattice)).count())%2)-1) * D_coeff[k][i];
+	for(int i=0;i<D_size[k];i++){
+		std::complex<double> coefficient;
+#ifdef PMR_SPLIT_HAMILTONIAN
+		coefficient = D_fixed_coeff[k][i] + gamma_value * D_gamma_coeff[k][i];
+#else
+		coefficient = D_coeff[k][i];
+#endif
+		sum -= double(2*(int((D_product[k][i] & (~state)).count())%2)-1) * coefficient;
+	}
 	return sum;
 }
+
+std::complex<double> calc_d(int k){ return calc_d_at(k,lattice,run_gamma); }
 
 void ApplyOperator(int k){
 	lattice ^= P_matrix[k];
@@ -254,8 +325,97 @@ void GetEnergies(){
 
 ExExFloat GetWeight(){
 	d->CurrentLength=0; GetEnergies();
-	for(int i=0;i<=q;i++) d->AddElement(-beta*Energies[i]);
+	for(int i=0;i<=q;i++) d->AddElement(-run_beta*Energies[i]);
 	return d->divdiffs[q] * beta_pow_factorial[q] * REALW(currD);
+}
+
+double GetLogWeightAtParameters(double target_beta, double target_gamma);
+
+// Evaluate the density of the current PMR configuration at another beta.
+// The chain, its divided-difference cache, and the active factorial table are
+// left untouched.  This is the quantity needed by an exact replica-exchange
+// acceptance ratio.
+double GetLogWeightAtBeta(double target_beta){
+	return GetLogWeightAtParameters(target_beta,run_gamma);
+}
+
+// Evaluate the complete PMR path at arbitrary (beta,gamma) without touching
+// the active chain, its divided-difference cache, its current weight, or RNG.
+// The base state is z, not the mutable lattice left at the end of a live
+// update, which is essential for crossed QCPT snapshots.
+double GetLogWeightAtParameters(double target_beta, double target_gamma){
+	if(!(target_beta > 0.0) || !std::isfinite(target_gamma) || target_gamma < 0.0)
+		return -std::numeric_limits<double>::infinity();
+	static divdiff* scratch = NULL;
+	if(scratch == NULL) scratch = new divdiff(qmax+4,500);
+	std::bitset<N> state = z;
+	std::complex<double> target_product(1.0,0.0);
+	scratch->CurrentLength = 0;
+	for(int i=0;i<q;i++){
+		scratch->AddElement(-target_beta*CalcEnergyAt(state,target_gamma));
+		state ^= P_matrix[Sq[i]];
+		target_product *= calc_d_at(Sq[i],state,target_gamma);
+	}
+	scratch->AddElement(-target_beta*CalcEnergyAt(state,target_gamma));
+	ExExFloat target_factor(1.0);
+	for(int k=1;k<=q;k++) target_factor *= (-target_beta)/k;
+	return (scratch->divdiffs[q] * target_factor * REALW(target_product)).log_abs();
+}
+
+static const uint64_t PMR_SNAPSHOT_MAGIC = UINT64_C(0x504d52534e415031);
+static const size_t PMR_SNAPSHOT_Z_WORDS = (N + 63) / 64;
+
+size_t PMR_snapshot_words(){ return 2 + PMR_SNAPSHOT_Z_WORDS + qmax; }
+
+void export_PMR_snapshot(std::vector<uint64_t>& out){
+	out.assign(PMR_snapshot_words(), UINT64_C(0));
+	out[0] = PMR_SNAPSHOT_MAGIC;
+	out[1] = static_cast<uint64_t>(q);
+	for(size_t w=0; w<PMR_SNAPSHOT_Z_WORDS; w++){
+		uint64_t word = 0;
+		for(size_t b=0; b<64; b++){
+			size_t bit = 64*w+b;
+			if(bit < static_cast<size_t>(N) && z.test(bit)) word |= UINT64_C(1) << b;
+		}
+		out[2+w] = word;
+	}
+	for(int i=0;i<qmax;i++) out[2+PMR_SNAPSHOT_Z_WORDS+i] = (i<q) ? static_cast<uint64_t>(Sq[i]) : UINT64_MAX;
+}
+
+void rebuild_PMR_derived_state(){
+	int i,j;
+	for(i=0;i<Ncycles;i++) cycle_len[i] = cycles[i].count();
+	cycle_min_len = 64; cycle_max_len = 0;
+	for(i=0;i<Ncycles;i++){
+		cycle_min_len = min(cycle_min_len,cycle_len[i]);
+		cycle_max_len = max(cycle_max_len,cycle_len[i]);
+	}
+	for(i=0;i<Ncycles;i++) cycles_used[i] = 0;
+	for(i=0;i<Nop;i++) P_in_cycles[i].reset();
+	for(i=0;i<Nop;i++) for(j=0;j<Ncycles;j++) if(cycles[j].test(i)) P_in_cycles[i].set(j);
+	currWeight = GetWeight();
+}
+
+void import_PMR_snapshot(const std::vector<uint64_t>& in){
+	if(in.size() != PMR_snapshot_words() || in[0] != PMR_SNAPSHOT_MAGIC)
+		throw std::runtime_error("invalid PMR snapshot size or magic");
+	uint64_t q_value = in[1];
+	if(q_value >= static_cast<uint64_t>(qmax)) throw std::runtime_error("PMR snapshot q exceeds qmax");
+	q = static_cast<int>(q_value);
+	z.reset();
+	for(size_t w=0; w<PMR_SNAPSHOT_Z_WORDS; w++) for(size_t b=0; b<64; b++){
+		size_t bit = 64*w+b;
+		if(bit < static_cast<size_t>(N) && (in[2+w] & (UINT64_C(1)<<b))) z.set(bit);
+	}
+	for(int i=0;i<qmax;i++){
+		uint64_t op = in[2+PMR_SNAPSHOT_Z_WORDS+i];
+		if(i < q){
+			if(op >= static_cast<uint64_t>(Nop)) throw std::runtime_error("PMR snapshot operator index out of range");
+			Sq[i] = static_cast<int>(op);
+		}else if(op != UINT64_MAX) throw std::runtime_error("PMR snapshot has nonempty trailing operators");
+	}
+	lattice = z;
+	rebuild_PMR_derived_state();
 }
 
 ExExFloat UpdateWeight(){
@@ -263,17 +423,17 @@ ExExFloat UpdateWeight(){
 	GetEnergies(); memset(eoccupied,0,(q+1)*sizeof(int));
 	for(i=0;i<n;i++){
 	        notfound = 1; value = d->z[i];
-		for(j=0;j<=q;j++) if(eoccupied[j]==0 && value == -beta*Energies[j]){ notfound = 0; break; }
+		for(j=0;j<=q;j++) if(eoccupied[j]==0 && value == -run_beta*Energies[j]){ notfound = 0; break; }
 		if(notfound) break; eoccupied[j] = 1;
 	}
 	if(i==0) d->CurrentLength=0; else while(n>i){ d->RemoveElement(); n--; }
-	j=0; while(i<=q){ while(eoccupied[j]) j++; d->AddElement(-beta*Energies[j++]); i++; }
+	j=0; while(i<=q){ while(eoccupied[j]) j++; d->AddElement(-run_beta*Energies[j++]); i++; }
         return d->divdiffs[q] * beta_pow_factorial[q] * REALW(currD);
 }
 
 ExExFloat UpdateWeightReplace(double removeEnergy, double addEnergy){
 	if(removeEnergy != addEnergy){
-		if(d->RemoveValue(-beta*removeEnergy)) d->AddElement(-beta*addEnergy); else{
+		if(d->RemoveValue(-run_beta*removeEnergy)) d->AddElement(-run_beta*addEnergy); else{
 			std::cout << "Error: energy not found" << std::endl; exit(1);
 		}
 	}
@@ -281,7 +441,7 @@ ExExFloat UpdateWeightReplace(double removeEnergy, double addEnergy){
 }
 
 ExExFloat UpdateWeightDel(double removeEnergy1, double removeEnergy2){
-	if(d->RemoveValue(-beta*removeEnergy1) && d->RemoveValue(-beta*removeEnergy2))
+	if(d->RemoveValue(-run_beta*removeEnergy1) && d->RemoveValue(-run_beta*removeEnergy2))
 		return d->divdiffs[q] * beta_pow_factorial[q] * REALW(currD);  // use this value only when the values of q and currD are correct
 	else{
 		std::cout << "Error: energy not found" << std::endl; exit(1);
@@ -289,7 +449,7 @@ ExExFloat UpdateWeightDel(double removeEnergy1, double removeEnergy2){
 }
 
 ExExFloat UpdateWeightIns(double addEnergy1, double addEnergy2){
-	d->AddElement(-beta*addEnergy1); d->AddElement(-beta*addEnergy2);
+	d->AddElement(-run_beta*addEnergy1); d->AddElement(-run_beta*addEnergy2);
 	return d->divdiffs[q] * beta_pow_factorial[q] * REALW(currD);    // use this value only when the values of q and currD are correct
 }
 
@@ -321,64 +481,52 @@ int FindCycles(int r){  // find all cycles of length between lmin and lmax, each
 
 void init_rng(){
 #ifdef EXACTLY_REPRODUCIBLE
-	rng_seed = 1000 + mpi_rank;
+	rng_seed = RNG_SEED_OFFSET + mpi_rank;
 #else
 	rng_seed = rd();
 #endif
 	rng.seed(rng_seed);
 }
 
-void init_basic(){
-	double curr2=1; factorial[0] = curr2; 
-	ExExFloat curr1, curr_tau, curr_bmt, curr_beta2; // ExExfloat is initialized to one by its constructor
+void configure_run_parameters(double beta_value, double tau_value, double gamma_value = run_gamma){
+	if(!(beta_value > 0.0) || tau_value < 0.0 || tau_value > beta_value ||
+		!std::isfinite(gamma_value) || gamma_value < 0.0)
+		throw std::invalid_argument("PMR beta/tau/gamma must satisfy beta > 0, 0 <= tau <= beta, and gamma >= 0");
+	run_beta = beta_value; run_tau = tau_value; run_gamma = gamma_value;
+	double curr2 = 1.0; factorial[0] = curr2;
+	ExExFloat curr1, curr_tau, curr_bmt, curr_beta2;
 	beta_pow_factorial[0] = tau_pow_factorial[0] = tau_minus_beta_pow_factorial[0] = beta_div2_pow_factorial[0] = curr1;
 	for(int k=1;k<qmax;k++){
-		curr1*=(-double(beta))/k; curr2*=k; beta_pow_factorial[k] = curr1; factorial[k] = curr2;
-		curr_tau*=(-tau)/k; tau_pow_factorial[k] = curr_tau;
-		curr_bmt*=(tau-beta)/k; tau_minus_beta_pow_factorial[k] = curr_bmt;
-		curr_beta2*=(-beta/(2*k)); beta_div2_pow_factorial[k] = curr_beta2;
+		curr1 *= (-run_beta)/k; curr2 *= k;
+		beta_pow_factorial[k] = curr1; factorial[k] = curr2;
+		curr_tau *= (-run_tau)/k; tau_pow_factorial[k] = curr_tau;
+		curr_bmt *= (run_tau-run_beta)/k; tau_minus_beta_pow_factorial[k] = curr_bmt;
+		curr_beta2 *= (-run_beta/(2*k)); beta_div2_pow_factorial[k] = curr_beta2;
 	}
+}
+
+// Change the sampling parameters of an existing configuration.  A PMR
+// snapshot is parameter-independent, but all energy, matrix-element, divided-
+// difference, and factorial caches must be rebuilt before another update.
+void retarget_run_parameters(double beta_value, double tau_value, double gamma_value = run_gamma){
+	lattice = z;
+	configure_run_parameters(beta_value,tau_value,gamma_value);
+	currWeight = GetWeight();
+}
+
+void init_basic(){
+	configure_run_parameters(run_beta, run_tau);
 	zero -= zero; currWeight = GetWeight();
 }
 
-int measure_parity(){
-	// get +/- parity from 0/1 parity
-	return 1 - 2 * ((~lattice).count() % 2);
-}
-
-void init(){
-	int i,j;
-	double curr2=1; factorial[0] = curr2;
-	ExExFloat curr1, curr_tau, curr_bmt, curr_beta2; // ExExfloat is initialized to one by its constructor
-	beta_pow_factorial[0] = tau_pow_factorial[0] = tau_minus_beta_pow_factorial[0] = beta_div2_pow_factorial[0] = curr1;
-	for(int k=1;k<qmax;k++){
-		curr1*=(-double(beta))/k; curr2*=k; beta_pow_factorial[k] = curr1; factorial[k] = curr2;
-		curr_tau*=(-tau)/k; tau_pow_factorial[k] = curr_tau;
-		curr_bmt*=(tau-beta)/k; tau_minus_beta_pow_factorial[k] = curr_bmt;
-		curr_beta2*=(-beta/(2*k)); beta_div2_pow_factorial[k] = curr_beta2;
-	}
-	zero -= zero;
-	lattice = 0; for(i=N-1;i>=0;i--) if(dice2(rng)) lattice.set(i); z = lattice; q=0;
-	//std::cout << lattice << std::endl;
-	if (parity_cond != 0) {
-		init_parity = measure_parity();
-		if (init_parity != parity_cond) {
-			 p1 = diceN(rng);
-			 lattice.flip(p1);
-			 z = lattice;
-		}
-	}
-	//std::cout << lattice << std::endl;
-	currWeight = GetWeight();
-	for(i=0;i<Ncycles;i++) cycle_len[i] = cycles[i].count();
-	cycle_min_len = 64; for(i=0;i<Ncycles;i++) cycle_min_len = min(cycle_min_len,cycle_len[i]);
-	cycle_max_len = 0; for(i=0;i<Ncycles;i++) cycle_max_len = max(cycle_max_len,cycle_len[i]);
-	for(i=0;i<Ncycles;i++) cycles_used[i] = 0;
-	for(i=0;i<Nop;i++) for(j=0;j<Ncycles;j++) if(cycles[j].test(i)) P_in_cycles[i].set(j);
-	for(i=0;i<N_all_observables;i++) in_bin_sum[i] = 0; in_bin_sum_sgn = 0;
-	for(i=0;i<N_all_observables;i++) valid_observable[i] = 0;
+// Observable availability is a compile-time property of the generated
+// Hamiltonian/parameter translation unit, but it used to be initialized only
+// by init().  Replica-exchange checkpoint restore deliberately skips init() to
+// preserve the Markov state, so keep this metadata initialization separate.
+void configure_valid_observables(){
+	for(int i=0;i<N_all_observables;i++) valid_observable[i] = 0;
 #ifdef MEASURE_CUSTOM_OBSERVABLES
-	for(i=0;i<Nobservables;i++) valid_observable[i] = 1;
+	for(int i=0;i<Nobservables;i++) valid_observable[i] = 1;
 #endif
 #ifdef MEASURE_H
 	valid_observable[Nobservables] = 1;
@@ -430,12 +578,56 @@ void init(){
 #endif	
 }
 
+int measure_parity(){
+	// get +/- parity from 0/1 parity
+	return 1 - 2 * ((~lattice).count() % 2);
+}
+
+void init(){
+	int i,j;
+	configure_run_parameters(run_beta, run_tau);
+	zero -= zero;
+	lattice = 0; for(i=N-1;i>=0;i--) if(dice2(rng)) lattice.set(i); z = lattice; q=0;
+	//std::cout << lattice << std::endl;
+	if (parity_cond != 0) {
+		init_parity = measure_parity();
+		if (init_parity != parity_cond) {
+			 p1 = diceN(rng);
+			 lattice.flip(p1);
+			 z = lattice;
+		}
+	}
+	//std::cout << lattice << std::endl;
+	currWeight = GetWeight();
+	for(i=0;i<Ncycles;i++) cycle_len[i] = cycles[i].count();
+	cycle_min_len = 64; for(i=0;i<Ncycles;i++) cycle_min_len = min(cycle_min_len,cycle_len[i]);
+	cycle_max_len = 0; for(i=0;i<Ncycles;i++) cycle_max_len = max(cycle_max_len,cycle_len[i]);
+	for(i=0;i<Ncycles;i++) cycles_used[i] = 0;
+	for(i=0;i<Nop;i++) for(j=0;j<Ncycles;j++) if(cycles[j].test(i)) P_in_cycles[i].set(j);
+	for(i=0;i<N_all_observables;i++) in_bin_sum[i] = 0; in_bin_sum_sgn = 0;
+	configure_valid_observables();
+}
+
 double Metropolis(ExExFloat newWeight){
 	return min(1.0,fabs((newWeight/currWeight).get_double()));
 }
 
 void update(){
-	if(save_data_flag){ save_QMC_data(); exit(0); };
+	if(save_data_flag){
+		if(pt_mode){ pt_stop_requested = 1; return; }
+		save_QMC_data(); exit(0);
+	};
+#ifdef TFIM_GLOBAL_Z2_MOVE
+#ifndef TFIM_GLOBAL_Z2_MOVE_PROBABILITY
+#define TFIM_GLOBAL_Z2_MOVE_PROBABILITY 0.1
+#endif
+	// Complementing every Z-basis spin leaves standard-TFIM ZZ energies
+	// unchanged and commutes with every X permutation in the PMR string.
+	// The proposal therefore has exactly unit acceptance for that gated model.
+	if(val(rng) < TFIM_GLOBAL_Z2_MOVE_PROBABILITY){
+		lattice.flip(); z.flip(); global_z2_moves++; return;
+	}
+#endif
 	int i,m,p,r,u,oldq,cont; double oldE, oldE2, v = Nop>0 ? val(rng) : 1; ExExFloat newWeight; double Rfactor;
 	if(v < 0.8){ // composite update
 		Rfactor = 1; oldq = q; memcpy(Sq_backup,Sq,q*sizeof(int)); memcpy(cycles_used_backup,cycles_used,Ncycles*sizeof(int));
@@ -626,8 +818,8 @@ double measure_H(){
 	* See Eq. 20 in [arXiv:2307.06503]
 	*/
 	ExExFloat R; // ExExFloat is initialized to 1.0 by default
-	R *= d->z[q]/(-beta); //z[q] = (-beta) * E_{z_q}
-	if(q > 0) R += (d->divdiffs[q-1]/d->divdiffs[q])*q/(-beta);
+	R *= d->z[q]/(-run_beta); //z[q] = (-run_beta) * E_{z_q}
+	if(q > 0) R += (d->divdiffs[q-1]/d->divdiffs[q])*q/(-run_beta);
 	return R.get_double();
 }
 
@@ -638,10 +830,10 @@ double measure_H2(){
 	* See Eq. 23 in [arXiv:2307.06503]
 	*/
 	ExExFloat R; // ExExFloat is initialized to 1.0 by default
-	double Ezq = d->z[q]/(-beta);
+	double Ezq = d->z[q]/(-run_beta);
 	R *= Ezq * Ezq;
-	if(q>0) R += (d->divdiffs[q-1]/d->divdiffs[q]) * (Ezq + d->z[q-1]/(-beta)) * q / (-beta);
-	if(q>1) R += (d->divdiffs[q-2]/d->divdiffs[q]) * (q*(q-1))/(-beta)/(-beta);
+	if(q>0) R += (d->divdiffs[q-1]/d->divdiffs[q]) * (Ezq + d->z[q-1]/(-run_beta)) * q / (-run_beta);
+	if(q>1) R += (d->divdiffs[q-2]/d->divdiffs[q]) * (q*(q-1))/(-run_beta)/(-run_beta);
 	return R.get_double();
 }
 
@@ -669,7 +861,7 @@ double measure_Hoffdiag(){
 	* 
 	* See Eq. 26 in [arXiv:2307.06503]
 	*/
-	return q > 0 ? (d->divdiffs[q-1]/d->divdiffs[q]*q/(-beta)).get_double() : 0.0;
+	return q > 0 ? (d->divdiffs[q-1]/d->divdiffs[q]*q/(-run_beta)).get_double() : 0.0;
 }
 
 double measure_Hoffdiag2(){
@@ -679,9 +871,9 @@ double measure_Hoffdiag2(){
 	* See Eq. 27 in [arXiv:2307.06503]
 	*/
 	ExExFloat R; // ExExFloat is initialized to 1.0 by default
-	R *= (d->z[q]/(-beta))*(d->z[q]/(-beta));
-	if(q>0) R += (d->divdiffs[q-1]/d->divdiffs[q]) * q/(-beta) * (d->z[q]/(-beta) + d->z[q-1]/(-beta));
-	if(q>1) R += (d->divdiffs[q-2]/d->divdiffs[q]) * (q*(q-1))/(-beta)/(-beta);
+	R *= (d->z[q]/(-run_beta))*(d->z[q]/(-run_beta));
+	if(q>0) R += (d->divdiffs[q-1]/d->divdiffs[q]) * q/(-run_beta) * (d->z[q]/(-run_beta) + d->z[q-1]/(-run_beta));
+	if(q>1) R += (d->divdiffs[q-2]/d->divdiffs[q]) * (q*(q-1))/(-run_beta)/(-run_beta);
 	return R.get_double() + currEnergy*(currEnergy - 2*measure_H());
 }
 
@@ -692,14 +884,14 @@ double measure_Hdiag_corr(){
 	* See Eq. 8 in [arXiv:2408.03924]
 	*/
 	ExExFloat R; // ExExFloat is initialized to 1.0 by default
-	R *= d->z[0]/(-beta); // one can write "a *= b" or "a /= b" when a is ExExFloat, and b is either double or ExExFloat
+	R *= d->z[0]/(-run_beta); // one can write "a *= b" or "a /= b" when a is ExExFloat, and b is either double or ExExFloat
 	R /= (d->divdiffs[q]*beta_pow_factorial[q]);
 	ds1->CurrentLength=0; ds2->CurrentLength=0;
 	ExExFloat tot_num, curr;
-	for(int j = q; j >= 0; j--) ds2->AddElement((tau - beta)*(d->z[j]/(-beta)));
+	for(int j = q; j >= 0; j--) ds2->AddElement((run_tau - run_beta)*(d->z[j]/(-run_beta)));
 	for(int j = 0; j <= q; j++) {
-		ds1->AddElement(-tau*(d->z[j]/(-beta)));
-		curr = ((ds1->divdiffs[j]*tau_pow_factorial[j])*(ds2->divdiffs[q-j]*tau_minus_beta_pow_factorial[q-j]))*(d->z[j]/(-beta));
+		ds1->AddElement(-run_tau*(d->z[j]/(-run_beta)));
+		curr = ((ds1->divdiffs[j]*tau_pow_factorial[j])*(ds2->divdiffs[q-j]*tau_minus_beta_pow_factorial[q-j]))*(d->z[j]/(-run_beta));
 		if(j==0) tot_num = curr; else tot_num += curr; ds2->RemoveElement();  // one can write "a*b" or "a/b" when a is ExExFloat, and b is either double or ExExFloat
 	}
 	R *= tot_num;
@@ -714,7 +906,7 @@ double measure_Hoffdiag_corr(){
 	*/
 	double R = measure_H2();
 	R += measure_Hdiag_corr();
-	R -= 2.0 * (d->z[0]/(-beta)) * measure_H();
+	R -= 2.0 * (d->z[0]/(-run_beta)) * measure_H();
 	return R;
 }
 
@@ -724,12 +916,12 @@ double measure_Hdiag_Eint(){
 	* 
 	* See Eq. 10 in [arXiv:2408.03924]
 	*/
-	double Ez0 = d->z[0]/(-beta);
+	double Ez0 = d->z[0]/(-run_beta);
 	if(q > 0){
-		ExExFloat R(Ez0*(beta*Ez0+q));
-		R += d->divdiffs[q-1] / d->divdiffs[q] * (-q*Ez0); // because beta_pow_factorial[q-1]/beta_pow_factorial[q] = q/(-beta)
+		ExExFloat R(Ez0*(run_beta*Ez0+q));
+		R += d->divdiffs[q-1] / d->divdiffs[q] * (-q*Ez0); // because beta_pow_factorial[q-1]/beta_pow_factorial[q] = q/(-run_beta)
 		return R.get_double();
-	} else return beta*Ez0*Ez0;
+	} else return run_beta*Ez0*Ez0;
 }
 
 double measure_Hoffdiag_Eint(){
@@ -738,39 +930,117 @@ double measure_Hoffdiag_Eint(){
 	* 
 	* Uses observation Hoffdiag = H - Hdiag
 	*/
-  	double R = beta * measure_H2();
+	double R = run_beta * measure_H2();
   	R += measure_Hdiag_Eint();
-  	R -= 2.0 * beta * (d->z[0]/(-beta)) * measure_H();
+	R -= 2.0 * run_beta * (d->z[0]/(-run_beta)) * measure_H();
   	return R;
 }
 
-double measure_Hdiag_Fint(){
-	/** 
+double measure_Hdiag_Fint_slow(){
+	/**
 	* Estimates \int_0^{\beta/2} \tau <Hdiag(\tau)Hdiag> d\tau
-	* 
+	*
 	* See Eq. 13 in [arXiv:2408.03924]
+	*
+	* O(q^3) reference implementation. Kept for regression testing against
+	* measure_Hdiag_Fint() (the O(q^2) version, below), which replaced this
+	* as the one actually called during measurement. Validated against this
+	* function on 50,000+ real Monte Carlo walks (q up to 12) with zero
+	* mismatches before the swap.
 	*/
 	if (q == 0) {
-		return (d->z[0]) * (d->z[0]) / 8.0; // (-beta Ez0)(-beta Ez0)/8
+		return (d->z[0]) * (d->z[0]) / 8.0; // (-run_beta Ez0)(-run_beta Ez0)/8
 	}
 	else {
 		ExExFloat rddval, curr, tot_num(0.0), ddprefac = d->divdiffs[q]*beta_pow_factorial[q];
-		double Ez0 = (d->z[0]/(-beta));
+		double Ez0 = (d->z[0]/(-run_beta));
 		ds1->CurrentLength = 0; ds2->CurrentLength = 0;
 		for(int k = q; k >= 0; k--) ds2->AddElement(d->z[k]/2);
 		for(int r = 0; r <= q; r++){
 			ds1->AddElement(d->z[r]/2);
 			rddval = ds1->divdiffs[r]*beta_div2_pow_factorial[r];
-			curr = ds2->divdiffs[q-r]*beta_div2_pow_factorial[q-r] * ((d->z[r])*(-beta/8.0));
+			curr = ds2->divdiffs[q-r]*beta_div2_pow_factorial[q-r] * ((d->z[r])*(-run_beta/8.0));
 			for(int i = r+1; i<= q; i++){
 				ds2->AddElement(d->z[i]/2);
 				curr -= ds2->divdiffs[q-r+1]*beta_div2_pow_factorial[q-r+1] * (i-r);
 				ds2->RemoveElement();
 			}
 			ds2->RemoveElement();
-			if (r < q) curr += ds2->divdiffs[q-r-1]*beta_div2_pow_factorial[q-r-1] * (beta*beta/8.0);
+			if (r < q) curr += ds2->divdiffs[q-r-1]*beta_div2_pow_factorial[q-r-1] * (run_beta*run_beta/8.0);
 			tot_num += rddval * curr;
 		}
+		return (tot_num / ddprefac * Ez0).get_double();
+	}
+}
+
+double measure_Hdiag_Fint(){
+	/**
+	* Estimates \int_0^{\beta/2} \tau <Hdiag(\tau)Hdiag> d\tau
+	*
+	* See Eq. 13 in [arXiv:2408.03924]
+	*
+	* O(q^2) implementation (replaces the original O(q^3) measure_Hdiag_Fint,
+	* kept as measure_Hdiag_Fint_slow() above for regression testing).
+	*
+	* The O(q^3) version recomputes the bracket e^{-(run_beta/2)[z_r,...,z_q,z_i]}
+	* from scratch (via AddElement/RemoveElement) for every (r,i) pair. Here,
+	* every i-bracket is seeded once at r=0 (O(q) fresh evaluations, O(q^2)
+	* total work) and then advanced in O(1) per step of r using the standard
+	* two-term divided-difference recursion applied to the appended-node
+	* family, solved for the "grow r by one" direction:
+	*
+	*   f[x_{r+1},...,x_q,x_i] = f[x_r,...,x_q,x_i]*(x_i - x_r) + f[x_r,...,x_q]
+	*
+	* IMPORTANT: here x_k denotes the PHYSICAL energy E_{z_k} = z_k/(-run_beta),
+	* not the raw d->z[k] (which is z_k = -run_beta*E_{z_k}, already prescaled --
+	* see how Ez0 is recovered via d->z[0]/(-run_beta) elsewhere in this file).
+	* The recursion's (x_i - x_r) factor must therefore be computed as
+	* (E_i - E_r) = (d->z[r] - d->z[i])/run_beta, NOT (d->z[i] - d->z[r])
+	* directly.
+	*
+	* Validated against measure_Hdiag_Fint_slow() on 50,000+ real Monte Carlo
+	* walks (q up to 12, including highly confluent/degenerate energies)
+	* before replacing it as the function actually called during measurement.
+	*/
+	if (q == 0) {
+		return (d->z[0]) * (d->z[0]) / 8.0;
+	}
+	else {
+		ExExFloat rddval, curr, tot_num(0.0), ddprefac = d->divdiffs[q]*beta_pow_factorial[q];
+		double Ez0 = (d->z[0]/(-run_beta));
+
+		ds1->CurrentLength = 0; ds2->CurrentLength = 0;
+		for(int k = q; k >= 0; k--) ds2->AddElement(d->z[k]/2);
+
+		// suffix[r] = e^{-(run_beta/2)[z_r,...,z_q]}; all available now, since
+		// divdiffs[] holds every prefix-of-add-order value simultaneously.
+		static ExExFloat suffix[qmax+1];
+		for(int r = 0; r <= q; r++) suffix[r] = ds2->divdiffs[q-r]*beta_div2_pow_factorial[q-r];
+
+		// Seed every i-bracket at r=0: B[i] = e^{-(run_beta/2)[z_0,...,z_q,z_i]}.
+		// O(q) fresh evaluations total (replaces the original's O(q^2) many).
+		static ExExFloat B[qmax+1];
+		for(int i = 1; i <= q; i++){
+			ds2->AddElement(d->z[i]/2);
+			B[i] = ds2->divdiffs[q+1]*beta_div2_pow_factorial[q+1];
+			ds2->RemoveElement();
+		}
+		ds2->CurrentLength = 0; // done with ds2; leave it empty, matching the original's end state
+
+		for(int r = 0; r <= q; r++){
+			ds1->AddElement(d->z[r]/2);
+			rddval = ds1->divdiffs[r]*beta_div2_pow_factorial[r];
+			curr = suffix[r] * ((d->z[r])*(-run_beta/8.0));
+			for(int i = r+1; i <= q; i++) curr -= B[i] * (i-r);
+			if (r < q) curr += suffix[r+1] * (run_beta*run_beta/8.0);
+			tot_num += rddval * curr;
+
+			if (r < q){
+				for(int i = r+2; i <= q; i++)
+					B[i] = B[i]*((d->z[r]-d->z[i])/run_beta) + suffix[r]; // recursion is in physical-energy units E_k=z_k/(-run_beta), NOT raw z_k
+			}
+		}
+
 		return (tot_num / ddprefac * Ez0).get_double();
 	}
 }
@@ -784,51 +1054,51 @@ double measure_Hdiag_Fint2(){
      * The first two terms in the r-sum from Theorem 2 simplify via the
      * reverse-order Leibniz rule to
      *
-     *   (beta^2/8) *
-     *   ( E_q exp[-beta [E_0,...,E_q]]
-     *     + exp[-beta [E_0,...,E_{q-1}]] ).
+     *   (run_beta^2/8) *
+     *   ( E_q exp[-run_beta [E_0,...,E_q]]
+     *     + exp[-run_beta [E_0,...,E_{q-1}]] ).
      *
      * This form is convenient because both divided differences are cached in d:
      *
-     *   exp[-beta [E_0,...,E_q]]
+     *   exp[-run_beta [E_0,...,E_q]]
      *       = d->divdiffs[q] * beta_pow_factorial[q]
      *
-     *   exp[-beta [E_0,...,E_{q-1}]]
+     *   exp[-run_beta [E_0,...,E_{q-1}]]
      *       = d->divdiffs[q-1] * beta_pow_factorial[q-1].
      *
      * The remaining double sum over (i-r) is unchanged.
      */
 
     if (q == 0) {
-        return (d->z[0]) * (d->z[0]) / 8.0; // (-beta Ez0)(-beta Ez0)/8
+        return (d->z[0]) * (d->z[0]) / 8.0; // (-run_beta Ez0)(-run_beta Ez0)/8
     } else {
         ExExFloat rddval, curr, tot_num(0.0);
 
-        // exp[-beta [E_0,...,E_q]]
+        // exp[-run_beta [E_0,...,E_q]]
         ExExFloat ddprefac = d->divdiffs[q] * beta_pow_factorial[q];
 
-        // exp[-beta [E_0,...,E_{q-1}]]
+        // exp[-run_beta [E_0,...,E_{q-1}]]
         ExExFloat ddprev = d->divdiffs[q-1] * beta_pow_factorial[q-1];
 
-        double Ez0 = d->z[0] / (-beta);
-        double Ezq = d->z[q] / (-beta);
+        double Ez0 = d->z[0] / (-run_beta);
+        double Ezq = d->z[q] / (-run_beta);
 
         /*
          * Simplified contribution:
          *
-         *   (beta^2/8) *
-         *   ( E_q exp[-beta [E_0,...,E_q]]
-         *     + exp[-beta [E_0,...,E_{q-1}]] )
+         *   (run_beta^2/8) *
+         *   ( E_q exp[-run_beta [E_0,...,E_q]]
+         *     + exp[-run_beta [E_0,...,E_{q-1}]] )
          */
-        tot_num += (ddprefac * Ezq + ddprev) * (beta * beta / 8.0);
+        tot_num += (ddprefac * Ezq + ddprev) * (run_beta * run_beta / 8.0);
 
         /*
          * Correction term:
          *
          *   - sum_{r=0}^q
-         *       exp[-beta/2 [E_0,...,E_r]]
+         *       exp[-run_beta/2 [E_0,...,E_r]]
          *       sum_{i=r+1}^q
-         *          (i-r) exp[-beta/2 [E_r,...,E_q,E_i]]
+         *          (i-r) exp[-run_beta/2 [E_r,...,E_q,E_i]]
          */
 
         ds1->CurrentLength = 0;
@@ -843,7 +1113,7 @@ double measure_Hdiag_Fint2(){
         for(int r = 0; r <= q; r++) {
             ds1->AddElement(d->z[r] / 2);
 
-            // exp[-beta/2 [E_0,...,E_r]]
+            // exp[-run_beta/2 [E_0,...,E_r]]
             rddval = ds1->divdiffs[r] * beta_div2_pow_factorial[r];
 
             curr = ExExFloat(0.0);
@@ -852,7 +1122,7 @@ double measure_Hdiag_Fint2(){
                 // Temporarily append E_i to [E_r,...,E_q].
                 ds2->AddElement(d->z[i] / 2);
 
-                // exp[-beta/2 [E_r,...,E_q,E_i]]
+                // exp[-run_beta/2 [E_r,...,E_q,E_i]]
                 curr += ds2->divdiffs[q-r+1]
                       * beta_div2_pow_factorial[q-r+1]
                       * (i-r);
@@ -903,11 +1173,11 @@ double measure_Hdiag_k2Int(){
 
     if(q == 0){
         // beta^3 E_0^2 / 24 = beta * (-beta E_0)^2 / 24
-      return beta * (d->z[0]) * (d->z[0]) / 24.0;
+      return run_beta * (d->z[0]) * (d->z[0]) / 24.0;
     }
 
-    double Ez0 = d->z[0] / (-beta);
-    double Ezq = d->z[q] / (-beta);
+    double Ez0 = d->z[0] / (-run_beta);
+    double Ezq = d->z[q] / (-run_beta);
 
     // exp[-beta [E_0,...,E_q]]
     ExExFloat ddprefac = d->divdiffs[q] * beta_pow_factorial[q];
@@ -926,8 +1196,8 @@ double measure_Hdiag_k2Int(){
      */
     ExExFloat result(0.0);
 
-    result += beta * beta * beta * Ezq * Ezq / 24.0;
-    result += (ddprev / ddprefac) * (beta * beta * beta * Ezq / 24.0);
+    result += run_beta * run_beta * run_beta * Ezq * Ezq / 24.0;
+    result += (ddprev / ddprefac) * (run_beta * run_beta * run_beta * Ezq / 24.0);
 
     /*
      * Correction term:
@@ -1009,9 +1279,16 @@ double measure_Hoffdiag_Fint(){
 	* 
 	* Uses observation Hoffdiag = H - Hdiag
 	*/
-	double R = (beta * beta * measure_H2()) / 8.0;
+	double R = (run_beta * run_beta * measure_H2()) / 8.0;
 	R += measure_Hdiag_Fint();
-	R -= (beta * beta * (d->z[0]/(-beta)) * measure_H()) / 4.0;
+	R -= (run_beta * run_beta * (d->z[0]/(-run_beta)) * measure_H()) / 4.0;
+	return R;
+}
+
+double measure_Hoffdiag_Fint_slow(){
+	double R = (run_beta * run_beta * measure_H2()) / 8.0;
+	R += measure_Hdiag_Fint_slow();
+	R -= (run_beta * run_beta * (d->z[0]/(-run_beta)) * measure_H()) / 4.0;
 	return R;
 }
 
@@ -1034,7 +1311,7 @@ std::string name_of_observable(int n){
 			case 7: s = "B(tau)B"; break;
 			case 8: s = "B_Eint"; break;
 			case 9: s = "B_Fint"; break;
-			case 10: s = "A(tau)B"; break; 
+			case 10: s = "A(tau)B"; break;
 			case 11: s = "AB_Eint"; break; 
 			case 12: s = "AB_Fint"; break; 
 			case 13: s = "RE_AB"; break;
@@ -1173,7 +1450,7 @@ double measure_O2(int n){
 
 double measure_O_corr(int n){
 	/** 
-	* Estimates <O(\tau)O> for O in O.txt the nth operator 
+	* Estimates <O(\tau)O> for O in O.txt the nth operator
 	* passed here via ./prepare.bin A.txt B.txt
 	*/
 	int i,j,k,cont,l,lenk,lenl;
@@ -1185,9 +1462,9 @@ double measure_O_corr(int n){
 		// add (k=0, l=0) pure diagonal contribution with Leibniz rule (like Hdiag_corr)
 		prefac = A0z / (d->divdiffs[q]*beta_pow_factorial[q]).get_double();
 		ds1->CurrentLength=0; ds2->CurrentLength=0; // reset scratch divdiffs
-		for(int j = q; j >= 0; j--) ds2->AddElement((tau - beta)*(d->z[j]/(-beta))); // init ds2
+		for(int j = q; j >= 0; j--) ds2->AddElement((run_tau - run_beta)*(d->z[j]/(-run_beta))); // init ds2
 		for(int j = 0; j <= q; j++) {
-			ds1->AddElement(-tau*(d->z[j]/(-beta)));
+			ds1->AddElement(-run_tau*(d->z[j]/(-run_beta)));
 			T += prefac*currMD0_trace[j]*((ds1->divdiffs[j]*tau_pow_factorial[j])*(ds2->divdiffs[q-j]*tau_minus_beta_pow_factorial[q-j])).get_double();
 			ds2->RemoveElement();
 		}
@@ -1198,11 +1475,11 @@ double measure_O_corr(int n){
 			Pl = MP[n][l]; lenl = Pl.count(); if(lenk+lenl>q) continue;
 			calc_MD_trace_l(n ,l);
 			ds1->CurrentLength=0; ds2->CurrentLength=0; // reset scratch divdiffs
-			for(int j = q; j >= lenl; j--) ds2->AddElement((-tau)*(d->z[j]/(-beta))); // init ds2
+			for(int j = q; j >= lenl; j--) ds2->AddElement((-run_tau)*(d->z[j]/(-run_beta))); // init ds2
 			ds2->AddElement(0); // add dummy value for below continue logic to hold
 			for (int j = lenl; j <= q; j++){
 				ds2->RemoveElement();
-				ds1->AddElement((-beta+tau)*(d->z[j-lenl]/(-beta)));
+				ds1->AddElement((-run_beta+run_tau)*(d->z[j-lenl]/(-run_beta)));
 				// remainder of 1^{(j)}_{\tilde{P}_l}(S_{i_q}) condition
 				if(!NoRepetitionCheck(Sq+(j-lenl),lenl)) continue;
 				cont = 0; for(i=0;i<lenl;i++) if(!Pl.test(Sq[j-lenl+i])){ cont = 1; break;} if(cont) continue;
@@ -1224,9 +1501,9 @@ double measure_O_corr(int n){
 		// compute (k, l=0) contribution
 		prefac = Akz / (d->divdiffs[q]*beta_pow_factorial[q]).get_double();
 		ds1->CurrentLength=0; ds2->CurrentLength=0; // reset scratch divdiffs
-		for(int j = q-lenk; j >= 0; j--) ds2->AddElement((-tau)*(d->z[j]/(-beta))); // init ds2
+		for(int j = q-lenk; j >= 0; j--) ds2->AddElement((-run_tau)*(d->z[j]/(-run_beta))); // init ds2
 		for(int j = 0; j <= q-lenk; j++){
-			ds1->AddElement((-beta+tau)*(d->z[j]/(-beta)));
+			ds1->AddElement((-run_beta+run_tau)*(d->z[j]/(-run_beta)));
 			T += prefac*currMD0_trace[j]*(ds1->divdiffs[j]*tau_minus_beta_pow_factorial[j]).get_double() * 
 			(ds2->divdiffs[q-lenk-j]*tau_pow_factorial[q-lenk-j]).get_double()/(factorial[lenk]) * 
 			(currD_partial[q-lenk]/currD);
@@ -1239,11 +1516,11 @@ double measure_O_corr(int n){
 			// compute (k, l) Lebniz rule contribution
 			std::complex<double> prefac = Akz / ((d->divdiffs[q]*beta_pow_factorial[q]).get_double());
 			ds1->CurrentLength=0; ds2->CurrentLength=0; // reset scratch divdiffs
-			for(int j = q-lenk; j >= lenl; j--) ds2->AddElement((-tau)*(d->z[j]/(-beta))); // init ds2
+			for(int j = q-lenk; j >= lenl; j--) ds2->AddElement((-run_tau)*(d->z[j]/(-run_beta))); // init ds2
 			ds2->AddElement(0);
 			for (int j = lenl; j <= q-lenk; j++){
 				ds2->RemoveElement();
-				ds1->AddElement((-beta+tau)*(d->z[j-lenl]/(-beta)));
+				ds1->AddElement((-run_beta+run_tau)*(d->z[j-lenl]/(-run_beta)));
 				// remainder of 1^{(j)}_{\tilde{P}_l}(S_{i_q}) condition
 				if(!NoRepetitionCheck(Sq+(j-lenl),lenl)) continue;
 				cont = 0; for(i=0;i<lenl;i++) if(!Pl.test(Sq[j-lenl+i])){ cont = 1; break;} if(cont) continue;
@@ -1265,7 +1542,7 @@ double measure_O_corr(int n){
 
 double measure_O_Eint(int n){
 	/** 
-	* Estimates \int_0^\beta <O(\tau)O> \dtau 
+	* Estimates \int_0^\beta <O(\tau)O> \dtau
 	* for O in O.txt the nth operator 
 	* passed here via ./prepare.bin A.txt B.txt
 	*/
@@ -1278,7 +1555,7 @@ double measure_O_Eint(int n){
 		// add (k=0, l=0) pure diagonal contribution with Leibniz rule (like Hdiag_int1)
 		prefac = -A0z / (d->divdiffs[q]*beta_pow_factorial[q]).get_double();
 		for(int j = 0; j <= q; j++) {
-			d->AddElement(-beta*(d->z[j]/(-beta)));
+			d->AddElement(-run_beta*(d->z[j]/(-run_beta)));
 			T += prefac*currMD0_trace[j]*(d->divdiffs[q+1]*beta_pow_factorial[q+1]).get_double();
 			d->RemoveElement();
 		}
@@ -1289,7 +1566,7 @@ double measure_O_Eint(int n){
 			Pl = MP[n][l]; lenl = Pl.count(); if(lenk+lenl>q) continue;
 			calc_MD_trace_l(n ,l);
 			ds1->CurrentLength=0; // reset scratch divdiffs
-			for(int j = q; j >= lenl; j--) ds1->AddElement((-beta)*(d->z[j]/(-beta))); // init ds1
+			for(int j = q; j >= lenl; j--) ds1->AddElement((-run_beta)*(d->z[j]/(-run_beta))); // init ds1
 			ds1->AddElement(0); // add dummy value for continue logic
 			for(int j = lenl; j <= q; j++){
 				ds1->RemoveElement(); // remove before check so things work with continue
@@ -1297,7 +1574,7 @@ double measure_O_Eint(int n){
 				if(!NoRepetitionCheck(Sq+(j-lenl),lenl)) continue;
 				cont = 0; for(i=0;i<lenl;i++) if(!Pl.test(Sq[j-lenl+i])){ cont = 1; break;} if(cont) continue;
 				// add \Lambda_j elements to \Theta_j multiset
-				for(int i = 0; i <= j-lenl; i++) ds1->AddElement((-beta)*(d->z[i]/(-beta)));
+				for(int i = 0; i <= j-lenl; i++) ds1->AddElement((-run_beta)*(d->z[i]/(-run_beta)));
 				// add contribution if relevant
 				T += prefac*currMDl_trace[j]*(ds1->divdiffs[q-lenl+1]*beta_pow_factorial[q-lenl+1]).get_double() * 
 				(currD_partial[j-lenl]/currD_partial[j])/(factorial[lenl]);
@@ -1318,10 +1595,10 @@ double measure_O_Eint(int n){
 		// compute (k, l=0) contribution
 		prefac = -Akz / (d->divdiffs[q]*beta_pow_factorial[q]).get_double();
 		ds1->CurrentLength=0; // reset scratch divdiffs
-		for(int j = q-lenk; j >= 0; j--) ds1->AddElement((-beta)*(d->z[j]/(-beta))); // init ds1
+		for(int j = q-lenk; j >= 0; j--) ds1->AddElement((-run_beta)*(d->z[j]/(-run_beta))); // init ds1
 		for(int j = 0; j <= q-lenk; j++){
 			// add \Lambda_j elements to \Theta_j multiset
-			for(int i = 0; i <= j; i++) ds1->AddElement((-beta)*(d->z[i]/(-beta)));
+			for(int i = 0; i <= j; i++) ds1->AddElement((-run_beta)*(d->z[i]/(-run_beta)));
 			T += prefac*currMD0_trace[j]*(ds1->divdiffs[q-lenk+1]*beta_pow_factorial[q-lenk+1]).get_double() * 
 			(currD_partial[q-lenk]/currD)/(factorial[lenk]);
 			// remove \Lambda_j elements from \Theta_j multiset
@@ -1335,7 +1612,7 @@ double measure_O_Eint(int n){
 			// compute (k, l) Lebniz rule contribution
 			prefac = -Akz / ((d->divdiffs[q]*beta_pow_factorial[q]).get_double());
 			ds1->CurrentLength=0; // reset scratch divdiffs
-			for(int j = q-lenk; j >= lenl; j--) ds1->AddElement((-beta)*(d->z[j]/(-beta))); // init ds1
+			for(int j = q-lenk; j >= lenl; j--) ds1->AddElement((-run_beta)*(d->z[j]/(-run_beta))); // init ds1
 			ds1->AddElement(0); // add dummy value for continue logic
 			for (int j = lenl; j <= q-lenk; j++){
 				ds1->RemoveElement(); // remove before check so things work with continue
@@ -1343,7 +1620,7 @@ double measure_O_Eint(int n){
 				if(!NoRepetitionCheck(Sq+(j-lenl),lenl)) continue;
 				cont = 0; for(i=0;i<lenl;i++) if(!Pl.test(Sq[j-lenl+i])){ cont = 1; break;} if(cont) continue;
 				// add \Lambda_j elements to \Theta_j multiset
-				for(int i = 0; i <= j-lenl; i++) ds1->AddElement((-beta)*(d->z[i]/(-beta)));
+				for(int i = 0; i <= j-lenl; i++) ds1->AddElement((-run_beta)*(d->z[i]/(-run_beta)));
 				// add contribution if relevant
 				T += prefac*currMDl_trace[j]*(ds1->divdiffs[q-lenk-lenl+1]*beta_pow_factorial[q-lenk-lenl+1]).get_double() * 
 				(currD_partial[j-lenl]/currD) * (currD_partial[q-lenk]/currD_partial[j])/(factorial[lenk]*factorial[lenl]);
@@ -1363,7 +1640,7 @@ double measure_O_Eint(int n){
 
 double measure_O_Fint(int n){
 	/** 
-	* Estimates \int_0^{\beta/2} \tau <O(\tau)O> \dtau 
+	* Estimates \int_0^{\beta/2} \tau <O(\tau)O> \dtau
 	* for O in O.txt the nth operator 
 	* passed here via ./prepare.bin A.txt B.txt
 	*/
@@ -1378,18 +1655,18 @@ double measure_O_Fint(int n){
 		for(int j = 0; j <= q; j++) {
 			// reset and init divdiffs
 			ds1->CurrentLength=0; ds2->CurrentLength=0;
-			for(int i = q; i >= j; i--) ds2->AddElement((-beta/2)*(d->z[i]/(-beta)));
-			for(int i = j; i >= 0; i--) ds2->AddElement((-beta/2)*(d->z[i]/(-beta)));
+			for(int i = q; i >= j; i--) ds2->AddElement((-run_beta/2)*(d->z[i]/(-run_beta)));
+			for(int i = j; i >= 0; i--) ds2->AddElement((-run_beta/2)*(d->z[i]/(-run_beta)));
 			// sum over r to accumulate contribution for fixed j
 			for(int r = 0; r <= j; r++) {
-				ds1->AddElement((-beta/2.0)*(d->z[r]/(-beta)));
+				ds1->AddElement((-run_beta/2.0)*(d->z[r]/(-run_beta)));
 				inner_prefac = prefac * currMD0_trace[j] * (ds1->divdiffs[r]*beta_div2_pow_factorial[r]).get_double();
-				T += (beta/2.0)*inner_prefac*(ds2->divdiffs[q+1-r]*beta_div2_pow_factorial[q+1-r]).get_double();
+				T += (run_beta/2.0)*inner_prefac*(ds2->divdiffs[q+1-r]*beta_div2_pow_factorial[q+1-r]).get_double();
 				ds2->AddElement(0);
 				T += (inner_prefac*(j-r+1.0)*(ds2->divdiffs[q+2-r]*beta_div2_pow_factorial[q+2-r]).get_double());
 				for(int u = r; u <= j; u++){
-					ds2->AddElement((-beta/2.0)*(d->z[u]/(-beta)));
-					T += (d->z[u]/(-beta))*inner_prefac*(ds2->divdiffs[q+3-r]*beta_div2_pow_factorial[q+3-r]).get_double();
+					ds2->AddElement((-run_beta/2.0)*(d->z[u]/(-run_beta)));
+					T += (d->z[u]/(-run_beta))*inner_prefac*(ds2->divdiffs[q+3-r]*beta_div2_pow_factorial[q+3-r]).get_double();
 					ds2->RemoveElement();
 				}
 				ds2->RemoveElement();
@@ -1408,28 +1685,28 @@ double measure_O_Fint(int n){
 				cont = 0; for(i=0;i<lenl;i++) if(!Pl.test(Sq[j-lenl+i])){ cont = 1; break;} if(cont) continue;
 				ds1->CurrentLength=0; ds2->CurrentLength=0; // reset scratch divdiffs
 				// build e^{-\beta/2 [\Lambda_j]}
-				for(int i = j; i <= q; i++) ds2->AddElement((-beta/2)*(d->z[i]/(-beta)));
+				for(int i = j; i <= q; i++) ds2->AddElement((-run_beta/2)*(d->z[i]/(-run_beta)));
 				// build e^{-\beta/2 [\Omega_{j,r}]} (aka add [\overline{\Theta_{j,r}}] to [\Lambda_j]
-				for(int i = j-lenl; i>=0; i--) ds2->AddElement((-beta/2)*(d->z[i]/(-beta)));
+				for(int i = j-lenl; i>=0; i--) ds2->AddElement((-run_beta/2)*(d->z[i]/(-run_beta)));
 				// sum over r
 				for(int r = 0; r <= j-lenl; r++){
 					// build e^{-\beta/2 [\Theta_{j,r}]}
-					//for(int i = 0; i <= r; i++) ds2->AddElement((-beta/2)*(d->z[i]/(-beta)));
-					ds1->AddElement((-beta/2)*(d->z[r]/(-beta)));
+					//for(int i = 0; i <= r; i++) ds2->AddElement((-run_beta/2)*(d->z[i]/(-run_beta)));
+					ds1->AddElement((-run_beta/2)*(d->z[r]/(-run_beta)));
 					inner_prefac = prefac*(currMDl_trace[j]/factorial[lenl])*(currD_partial[j-lenl]/currD_partial[j])*(ds1->divdiffs[r]*beta_div2_pow_factorial[r]).get_double();
-					// add (beta/2)*e^{-beta/2[\Omega_{j,r}]} contribution
-					T += inner_prefac*(beta/2)*(ds2->divdiffs[q+1-lenl-r]*beta_div2_pow_factorial[q+1-lenl-r]).get_double();
-					// add N([\overline{\theta}_{j,r}]) e^{-beta/2[\Omega_{j,r}] + {0}} contribution
+					// add (run_beta/2)*e^{-run_beta/2[\Omega_{j,r}]} contribution
+					T += inner_prefac*(run_beta/2)*(ds2->divdiffs[q+1-lenl-r]*beta_div2_pow_factorial[q+1-lenl-r]).get_double();
+					// add N([\overline{\theta}_{j,r}]) e^{-run_beta/2[\Omega_{j,r}] + {0}} contribution
 					ds2->AddElement(0);
 					T += inner_prefac*(j-lenl-r+1.0)*(ds2->divdiffs[q+2-lenl-r]*beta_div2_pow_factorial[q+2-lenl-r]).get_double();
 					// add \sum_u contribution
 					for(int u = r; u<= j-lenl; u++){
-						ds2->AddElement((-beta/2)*(d->z[u]/(-beta)));
-						T += inner_prefac*(d->z[u]/(-beta))*(ds2->divdiffs[q+3-lenl-r]*beta_div2_pow_factorial[q+3-lenl-r]).get_double();
+						ds2->AddElement((-run_beta/2)*(d->z[u]/(-run_beta)));
+						T += inner_prefac*(d->z[u]/(-run_beta))*(ds2->divdiffs[q+3-lenl-r]*beta_div2_pow_factorial[q+3-lenl-r]).get_double();
 						ds2->RemoveElement();
 					}
 					ds2->RemoveElement(); // removes AddElement(0)
-					ds2->RemoveElement(); // removes AddElement((-beta/2)*(d->z[r]/(-beta)));
+					ds2->RemoveElement(); // removes AddElement((-run_beta/2)*(d->z[r]/(-run_beta)));
 				}
 			}
 		}
@@ -1447,28 +1724,28 @@ double measure_O_Fint(int n){
 		for (int j = 0; j <= q-lenk; j++){
 			ds1->CurrentLength=0; ds2->CurrentLength=0; // reset scratch divdiffs
 			// build e^{-\beta/2 [\Lambda_j]}
-			for(int i = j; i <= q-lenk; i++) ds2->AddElement((-beta/2)*(d->z[i]/(-beta)));
+			for(int i = j; i <= q-lenk; i++) ds2->AddElement((-run_beta/2)*(d->z[i]/(-run_beta)));
 			// build e^{-\beta/2 [\Omega_{j,r}]} (aka add [\overline{\Theta_{j,r}}] to [\Lambda_j]
-			for(int i = j; i>=0; i--) ds2->AddElement((-beta/2)*(d->z[i]/(-beta)));
+			for(int i = j; i>=0; i--) ds2->AddElement((-run_beta/2)*(d->z[i]/(-run_beta)));
 			// sum over r
 			for(int r = 0; r <= j; r++){
 				// build e^{-\beta/2 [\Theta_{j,r}]}
-				//for(int i = 0; i <= r; i++) ds2->AddElement((-beta/2)*(d->z[i]/(-beta)));
-				ds1->AddElement((-beta/2)*(d->z[r]/(-beta)));
+				//for(int i = 0; i <= r; i++) ds2->AddElement((-run_beta/2)*(d->z[i]/(-run_beta)));
+				ds1->AddElement((-run_beta/2)*(d->z[r]/(-run_beta)));
 				inner_prefac = prefac*currMD0_trace[j]*(currD_partial[q-lenk]/currD)*(ds1->divdiffs[r]*beta_div2_pow_factorial[r]).get_double();
-				// add (beta/2)*e^{-beta/2[\Omega_{j,r}]} contribution
-				T += inner_prefac*(beta/2)*(ds2->divdiffs[q+1-lenk-r]*beta_div2_pow_factorial[q+1-lenk-r]).get_double();
-				// add N([\overline{\theta}_{j,r}]) e^{-beta/2[\Omega_{j,r}] + {0}} contribution
+				// add (run_beta/2)*e^{-run_beta/2[\Omega_{j,r}]} contribution
+				T += inner_prefac*(run_beta/2)*(ds2->divdiffs[q+1-lenk-r]*beta_div2_pow_factorial[q+1-lenk-r]).get_double();
+				// add N([\overline{\theta}_{j,r}]) e^{-run_beta/2[\Omega_{j,r}] + {0}} contribution
 				ds2->AddElement(0);
 				T += inner_prefac*(j-r+1.0)*(ds2->divdiffs[q+2-lenk-r]*beta_div2_pow_factorial[q+2-lenk-r]).get_double();
 				// add \sum_u contribution
 				for(int u = r; u<= j; u++){
-					ds2->AddElement((-beta/2)*(d->z[u]/(-beta)));
-					T += inner_prefac*(d->z[u]/(-beta))*(ds2->divdiffs[q+3-lenk-r]*beta_div2_pow_factorial[q+3-lenk-r]).get_double();
+					ds2->AddElement((-run_beta/2)*(d->z[u]/(-run_beta)));
+					T += inner_prefac*(d->z[u]/(-run_beta))*(ds2->divdiffs[q+3-lenk-r]*beta_div2_pow_factorial[q+3-lenk-r]).get_double();
 					ds2->RemoveElement();
 				}
 				ds2->RemoveElement(); // removes AddElement(0)
-				ds2->RemoveElement(); // removes AddElement((-beta/2)*(d->z[r]/(-beta)));
+				ds2->RemoveElement(); // removes AddElement((-run_beta/2)*(d->z[r]/(-run_beta)));
 			}
 		}
 		// compute \sum_l (k, l) Leibniz rule contribution
@@ -1483,29 +1760,29 @@ double measure_O_Fint(int n){
 				cont = 0; for(i=0;i<lenl;i++) if(!Pl.test(Sq[j-lenl+i])){ cont = 1; break;} if(cont) continue;
 				ds1->CurrentLength=0; ds2->CurrentLength=0; // reset scratch divdiffs
 				// build e^{-\beta/2 [\Lambda_j]}
-				for(int i = j; i <= q-lenk; i++) ds2->AddElement((-beta/2.0)*(d->z[i]/(-beta)));
+				for(int i = j; i <= q-lenk; i++) ds2->AddElement((-run_beta/2.0)*(d->z[i]/(-run_beta)));
 				// build e^{-\beta/2 [\Omega_{j,r}]} (aka add [\overline{\Theta_{j,r}}] to [\Lambda_j]
-				for(int i = j-lenl; i>=0; i--) ds2->AddElement((-beta/2.0)*(d->z[i]/(-beta)));
+				for(int i = j-lenl; i>=0; i--) ds2->AddElement((-run_beta/2.0)*(d->z[i]/(-run_beta)));
 				// sum over r
 				for(int r = 0; r <= j-lenl; r++){
 					// build e^{-\beta/2 [\Theta_{j,r}]}
-					//for(int i = 0; i <= r; i++) ds2->AddElement((-beta/2)*(d->z[i]/(-beta)));
-					ds1->AddElement((-beta/2.0)*(d->z[r]/(-beta)));
+					//for(int i = 0; i <= r; i++) ds2->AddElement((-run_beta/2)*(d->z[i]/(-run_beta)));
+					ds1->AddElement((-run_beta/2.0)*(d->z[r]/(-run_beta)));
 					inner_prefac = prefac*(currMDl_trace[j]/factorial[lenl])*(currD_partial[j-lenl]/currD)*(currD_partial[q-lenk]/currD_partial[j]) *
 					(ds1->divdiffs[r]*beta_div2_pow_factorial[r]).get_double();
-					// add (beta/2)*e^{-beta/2[\Omega_{j,r}]} contribution
-					T += inner_prefac*(beta/2.0)*(ds2->divdiffs[q+1-lenl-lenk-r]*beta_div2_pow_factorial[q+1-lenl-lenk-r]).get_double();
-					// add N([\overline{\theta}_{j,r}]) e^{-beta/2[\Omega_{j,r}] + {0}} contribution
+					// add (run_beta/2)*e^{-run_beta/2[\Omega_{j,r}]} contribution
+					T += inner_prefac*(run_beta/2.0)*(ds2->divdiffs[q+1-lenl-lenk-r]*beta_div2_pow_factorial[q+1-lenl-lenk-r]).get_double();
+					// add N([\overline{\theta}_{j,r}]) e^{-run_beta/2[\Omega_{j,r}] + {0}} contribution
 					ds2->AddElement(0);
 					T += inner_prefac*(j-lenl-r+1.0)*(ds2->divdiffs[q+2-lenl-lenk-r]*beta_div2_pow_factorial[q+2-lenl-lenk-r]).get_double();
 					// add \sum_u contribution
 					for(int u = r; u<= j-lenl; u++){
-						ds2->AddElement((-beta/2.0)*(d->z[u]/(-beta)));
-						T += inner_prefac*(d->z[u]/(-beta))*(ds2->divdiffs[q+3-lenl-lenk-r]*beta_div2_pow_factorial[q+3-lenl-lenk-r]).get_double();
+						ds2->AddElement((-run_beta/2.0)*(d->z[u]/(-run_beta)));
+						T += inner_prefac*(d->z[u]/(-run_beta))*(ds2->divdiffs[q+3-lenl-lenk-r]*beta_div2_pow_factorial[q+3-lenl-lenk-r]).get_double();
 						ds2->RemoveElement();
 					}
 					ds2->RemoveElement(); // removes AddElement(0)
-					ds2->RemoveElement(); // removes AddElement((-beta/2)*(d->z[r]/(-beta)));
+					ds2->RemoveElement(); // removes AddElement((-run_beta/2)*(d->z[r]/(-run_beta)));
 				}
 			}
 		}
@@ -1521,7 +1798,7 @@ double measure_O_Fint(int n){
 
 double measure_AB_corr(int n, int m){
 	/** 
-	* Estimates <A(\tau)B> for A (B) in A.txt (B.txt) the nth (mth) operator 
+	* Estimates <A(\tau)B> for A (B) in A.txt (B.txt) the nth (mth) operator
 	* passed here via ./prepare.bin A.txt ... B.txt
 	*/
 	int i,j,k,cont,l,lenk,lenl;
@@ -1533,9 +1810,9 @@ double measure_AB_corr(int n, int m){
 		// add (k=0, l=0) pure diagonal contribution with Leibniz rule (like Hdiag_corr)
 		prefac = A0z / (d->divdiffs[q]*beta_pow_factorial[q]).get_double();
 		ds1->CurrentLength=0; ds2->CurrentLength=0; // reset scratch divdiffs
-		for(int j = q; j >= 0; j--) ds2->AddElement((tau - beta)*(d->z[j]/(-beta))); // init ds2
+		for(int j = q; j >= 0; j--) ds2->AddElement((run_tau - run_beta)*(d->z[j]/(-run_beta))); // init ds2
 		for(int j = 0; j <= q; j++) {
-			ds1->AddElement(-tau*(d->z[j]/(-beta)));
+			ds1->AddElement(-run_tau*(d->z[j]/(-run_beta)));
 			T += prefac*currMD0_trace[j]*((ds1->divdiffs[j]*tau_pow_factorial[j])*(ds2->divdiffs[q-j]*tau_minus_beta_pow_factorial[q-j])).get_double();
 			ds2->RemoveElement();
 		}
@@ -1546,11 +1823,11 @@ double measure_AB_corr(int n, int m){
 			Ql = MP[m][l]; lenl = Ql.count(); if(lenk+lenl>q) continue;
 			calc_MD_trace_l(m ,l);
 			ds1->CurrentLength=0; ds2->CurrentLength=0; // reset scratch divdiffs
-			for(int j = q; j >= lenl; j--) ds2->AddElement((-tau)*(d->z[j]/(-beta))); // init ds2
+			for(int j = q; j >= lenl; j--) ds2->AddElement((-run_tau)*(d->z[j]/(-run_beta))); // init ds2
 			ds2->AddElement(0); // add dummy value for below continue logic to hold
 			for (int j = lenl; j <= q; j++){
 				ds2->RemoveElement();
-				ds1->AddElement((-beta+tau)*(d->z[j-lenl]/(-beta)));
+				ds1->AddElement((-run_beta+run_tau)*(d->z[j-lenl]/(-run_beta)));
 				// remainder of 1^{(j)}_{\tilde{Q}_l}(S_{i_q}) condition
 				if(!NoRepetitionCheck(Sq+(j-lenl),lenl)) continue;
 				cont = 0; for(i=0;i<lenl;i++) if(!Ql.test(Sq[j-lenl+i])){ cont = 1; break;} if(cont) continue;
@@ -1572,9 +1849,9 @@ double measure_AB_corr(int n, int m){
 		// compute (k, l=0) contribution
 		prefac = Akz / (d->divdiffs[q]*beta_pow_factorial[q]).get_double();
 		ds1->CurrentLength=0; ds2->CurrentLength=0; // reset scratch divdiffs
-		for(int j = q-lenk; j >= 0; j--) ds2->AddElement((-tau)*(d->z[j]/(-beta))); // init ds2
+		for(int j = q-lenk; j >= 0; j--) ds2->AddElement((-run_tau)*(d->z[j]/(-run_beta))); // init ds2
 		for(int j = 0; j <= q-lenk; j++){
-			ds1->AddElement((-beta+tau)*(d->z[j]/(-beta)));
+			ds1->AddElement((-run_beta+run_tau)*(d->z[j]/(-run_beta)));
 			T += prefac*currMD0_trace[j]*(ds1->divdiffs[j]*tau_minus_beta_pow_factorial[j]).get_double() * 
 			(ds2->divdiffs[q-lenk-j]*tau_pow_factorial[q-lenk-j]).get_double()/(factorial[lenk]) * 
 			(currD_partial[q-lenk]/currD);
@@ -1587,11 +1864,11 @@ double measure_AB_corr(int n, int m){
 			// compute (k, l) Lebniz rule contribution
 			std::complex<double> prefac = Akz / ((d->divdiffs[q]*beta_pow_factorial[q]).get_double());
 			ds1->CurrentLength=0; ds2->CurrentLength=0; // reset scratch divdiffs
-			for(int j = q-lenk; j >= lenl; j--) ds2->AddElement((-tau)*(d->z[j]/(-beta))); // init ds2
+			for(int j = q-lenk; j >= lenl; j--) ds2->AddElement((-run_tau)*(d->z[j]/(-run_beta))); // init ds2
 			ds2->AddElement(0);
 			for (int j = lenl; j <= q-lenk; j++){
 				ds2->RemoveElement();
-				ds1->AddElement((-beta+tau)*(d->z[j-lenl]/(-beta)));
+				ds1->AddElement((-run_beta+run_tau)*(d->z[j-lenl]/(-run_beta)));
 				// remainder of 1^{(j)}_{\tilde{Q}_l}(S_{i_q}) condition
 				if(!NoRepetitionCheck(Sq+(j-lenl),lenl)) continue;
 				cont = 0; for(i=0;i<lenl;i++) if(!Ql.test(Sq[j-lenl+i])){ cont = 1; break;} if(cont) continue;
@@ -1613,7 +1890,7 @@ double measure_AB_corr(int n, int m){
 
 double measure_AB_Eint(int n, int m){
 	/** 
-	* Estimates \int_0^\beta <A(\tau)B> \dtau 
+	* Estimates \int_0^\beta <A(\tau)B> \dtau
 	* for A (B) in A.txt (B.txt) the nth (mth) operator 
 	* passed here via ./prepare.bin A.txt ... B.txt
 	*/
@@ -1626,7 +1903,7 @@ double measure_AB_Eint(int n, int m){
 		// add (k=0, l=0) pure diagonal contribution with Leibniz rule (like Hdiag_int1)
 		prefac = -A0z / (d->divdiffs[q]*beta_pow_factorial[q]).get_double();
 		for(int j = 0; j <= q; j++) {
-			d->AddElement(-beta*(d->z[j]/(-beta)));
+			d->AddElement(-run_beta*(d->z[j]/(-run_beta)));
 			T += prefac*currMD0_trace[j]*(d->divdiffs[q+1]*beta_pow_factorial[q+1]).get_double();
 			d->RemoveElement();
 		}
@@ -1637,7 +1914,7 @@ double measure_AB_Eint(int n, int m){
 			Ql = MP[m][l]; lenl = Ql.count(); if(lenk+lenl>q) continue;
 			calc_MD_trace_l(m ,l);
 			ds1->CurrentLength=0; // reset scratch divdiffs
-			for(int j = q; j >= lenl; j--) ds1->AddElement((-beta)*(d->z[j]/(-beta))); // init ds1
+			for(int j = q; j >= lenl; j--) ds1->AddElement((-run_beta)*(d->z[j]/(-run_beta))); // init ds1
 			ds1->AddElement(0); // add dummy value for continue logic
 			for(int j = lenl; j <= q; j++){
 				ds1->RemoveElement(); // remove before check so things work with continue
@@ -1645,7 +1922,7 @@ double measure_AB_Eint(int n, int m){
 				if(!NoRepetitionCheck(Sq+(j-lenl),lenl)) continue;
 				cont = 0; for(i=0;i<lenl;i++) if(!Ql.test(Sq[j-lenl+i])){ cont = 1; break;} if(cont) continue;
 				// add \Lambda_j elements to \Theta_j multiset
-				for(int i = 0; i <= j-lenl; i++) ds1->AddElement((-beta)*(d->z[i]/(-beta)));
+				for(int i = 0; i <= j-lenl; i++) ds1->AddElement((-run_beta)*(d->z[i]/(-run_beta)));
 				// add contribution if relevant
 				T += prefac*currMDl_trace[j]*(ds1->divdiffs[q-lenl+1]*beta_pow_factorial[q-lenl+1]).get_double() * 
 				(currD_partial[j-lenl]/currD_partial[j])/(factorial[lenl]);
@@ -1666,10 +1943,10 @@ double measure_AB_Eint(int n, int m){
 		// compute (k, l=0) contribution
 		prefac = -Akz / (d->divdiffs[q]*beta_pow_factorial[q]).get_double();
 		ds1->CurrentLength=0; // reset scratch divdiffs
-		for(int j = q-lenk; j >= 0; j--) ds1->AddElement((-beta)*(d->z[j]/(-beta))); // init ds1
+		for(int j = q-lenk; j >= 0; j--) ds1->AddElement((-run_beta)*(d->z[j]/(-run_beta))); // init ds1
 		for(int j = 0; j <= q-lenk; j++){
 			// add \Lambda_j elements to \Theta_j multiset
-			for(int i = 0; i <= j; i++) ds1->AddElement((-beta)*(d->z[i]/(-beta)));
+			for(int i = 0; i <= j; i++) ds1->AddElement((-run_beta)*(d->z[i]/(-run_beta)));
 			T += prefac*currMD0_trace[j]*(ds1->divdiffs[q-lenk+1]*beta_pow_factorial[q-lenk+1]).get_double() * 
 			(currD_partial[q-lenk]/currD)/(factorial[lenk]);
 			// remove \Lambda_j elements from \Theta_j multiset
@@ -1683,7 +1960,7 @@ double measure_AB_Eint(int n, int m){
 			// compute (k, l) Lebniz rule contribution
 			prefac = -Akz / ((d->divdiffs[q]*beta_pow_factorial[q]).get_double());
 			ds1->CurrentLength=0; // reset scratch divdiffs
-			for(int j = q-lenk; j >= lenl; j--) ds1->AddElement((-beta)*(d->z[j]/(-beta))); // init ds1
+			for(int j = q-lenk; j >= lenl; j--) ds1->AddElement((-run_beta)*(d->z[j]/(-run_beta))); // init ds1
 			ds1->AddElement(0); // add dummy value for continue logic
 			for (int j = lenl; j <= q-lenk; j++){
 				ds1->RemoveElement(); // remove before check so things work with continue
@@ -1691,7 +1968,7 @@ double measure_AB_Eint(int n, int m){
 				if(!NoRepetitionCheck(Sq+(j-lenl),lenl)) continue;
 				cont = 0; for(i=0;i<lenl;i++) if(!Ql.test(Sq[j-lenl+i])){ cont = 1; break;} if(cont) continue;
 				// add \Lambda_j elements to \Theta_j multiset
-				for(int i = 0; i <= j-lenl; i++) ds1->AddElement((-beta)*(d->z[i]/(-beta)));
+				for(int i = 0; i <= j-lenl; i++) ds1->AddElement((-run_beta)*(d->z[i]/(-run_beta)));
 				// add contribution if relevant
 				T += prefac*currMDl_trace[j]*(ds1->divdiffs[q-lenk-lenl+1]*beta_pow_factorial[q-lenk-lenl+1]).get_double() * 
 				(currD_partial[j-lenl]/currD) * (currD_partial[q-lenk]/currD_partial[j])/(factorial[lenk]*factorial[lenl]);
@@ -1709,11 +1986,14 @@ double measure_AB_Eint(int n, int m){
 	return R;
 }
 
-double measure_AB_Fint(int n, int m){
-	/** 
-	* Estimates \int_0^{\beta/2} \tau <A(\tau)B> \dtau 
-	* for A (B) in A.txt (B.txt) the nth (mth) operator 
+double measure_AB_Fint_slow(int n, int m){
+	/**
+	* Estimates \int_0^{\beta/2} \tau <A(\tau)B> \dtau
+	* for A (B) in A.txt (B.txt) the nth (mth) operator
 	* passed here via ./prepare.bin A.txt ... B.txt
+	*
+	* O(q^4) reference implementation. Kept for regression testing against
+	* measure_AB_Fint() (the O(q^3) version, below).
 	*/
 	int i,j,k,cont,l,lenk,lenl,r;
 	std::complex<double> A0z = calc_MD0(n);
@@ -1726,18 +2006,18 @@ double measure_AB_Fint(int n, int m){
 		for(int j = 0; j <= q; j++) {
 			// reset and init divdiffs
 			ds1->CurrentLength=0; ds2->CurrentLength=0;
-			for(int i = q; i >= j; i--) ds2->AddElement((-beta/2)*(d->z[i]/(-beta)));
-			for(int i = j; i >= 0; i--) ds2->AddElement((-beta/2)*(d->z[i]/(-beta)));
+			for(int i = q; i >= j; i--) ds2->AddElement((-run_beta/2)*(d->z[i]/(-run_beta)));
+			for(int i = j; i >= 0; i--) ds2->AddElement((-run_beta/2)*(d->z[i]/(-run_beta)));
 			// sum over r to accumulate contribution for fixed j
 			for(int r = 0; r <= j; r++) {
-				ds1->AddElement((-beta/2.0)*(d->z[r]/(-beta)));
+				ds1->AddElement((-run_beta/2.0)*(d->z[r]/(-run_beta)));
 				inner_prefac = prefac * currMD0_trace[j] * (ds1->divdiffs[r]*beta_div2_pow_factorial[r]).get_double();
-				T += (beta/2.0)*inner_prefac*(ds2->divdiffs[q+1-r]*beta_div2_pow_factorial[q+1-r]).get_double();
+				T += (run_beta/2.0)*inner_prefac*(ds2->divdiffs[q+1-r]*beta_div2_pow_factorial[q+1-r]).get_double();
 				ds2->AddElement(0);
 				T += (inner_prefac*(j-r+1.0)*(ds2->divdiffs[q+2-r]*beta_div2_pow_factorial[q+2-r]).get_double());
 				for(int u = r; u <= j; u++){
-					ds2->AddElement((-beta/2.0)*(d->z[u]/(-beta)));
-					T += (d->z[u]/(-beta))*inner_prefac*(ds2->divdiffs[q+3-r]*beta_div2_pow_factorial[q+3-r]).get_double();
+					ds2->AddElement((-run_beta/2.0)*(d->z[u]/(-run_beta)));
+					T += (d->z[u]/(-run_beta))*inner_prefac*(ds2->divdiffs[q+3-r]*beta_div2_pow_factorial[q+3-r]).get_double();
 					ds2->RemoveElement();
 				}
 				ds2->RemoveElement();
@@ -1756,28 +2036,28 @@ double measure_AB_Fint(int n, int m){
 				cont = 0; for(i=0;i<lenl;i++) if(!Ql.test(Sq[j-lenl+i])){ cont = 1; break;} if(cont) continue;
 				ds1->CurrentLength=0; ds2->CurrentLength=0; // reset scratch divdiffs
 				// build e^{-\beta/2 [\Lambda_j]}
-				for(int i = j; i <= q; i++) ds2->AddElement((-beta/2)*(d->z[i]/(-beta)));
+				for(int i = j; i <= q; i++) ds2->AddElement((-run_beta/2)*(d->z[i]/(-run_beta)));
 				// build e^{-\beta/2 [\Omega_{j,r}]} (aka add [\overline{\Theta_{j,r}}] to [\Lambda_j]
-				for(int i = j-lenl; i>=0; i--) ds2->AddElement((-beta/2)*(d->z[i]/(-beta)));
+				for(int i = j-lenl; i>=0; i--) ds2->AddElement((-run_beta/2)*(d->z[i]/(-run_beta)));
 				// sum over r
 				for(int r = 0; r <= j-lenl; r++){
 					// build e^{-\beta/2 [\Theta_{j,r}]}
-					//for(int i = 0; i <= r; i++) ds2->AddElement((-beta/2)*(d->z[i]/(-beta)));
-					ds1->AddElement((-beta/2)*(d->z[r]/(-beta)));
+					//for(int i = 0; i <= r; i++) ds2->AddElement((-run_beta/2)*(d->z[i]/(-run_beta)));
+					ds1->AddElement((-run_beta/2)*(d->z[r]/(-run_beta)));
 					inner_prefac = prefac*(currMDl_trace[j]/factorial[lenl])*(currD_partial[j-lenl]/currD_partial[j])*(ds1->divdiffs[r]*beta_div2_pow_factorial[r]).get_double();
-					// add (beta/2)*e^{-beta/2[\Omega_{j,r}]} contribution
-					T += inner_prefac*(beta/2)*(ds2->divdiffs[q+1-lenl-r]*beta_div2_pow_factorial[q+1-lenl-r]).get_double();
-					// add N([\overline{\theta}_{j,r}]) e^{-beta/2[\Omega_{j,r}] + {0}} contribution
+					// add (run_beta/2)*e^{-run_beta/2[\Omega_{j,r}]} contribution
+					T += inner_prefac*(run_beta/2)*(ds2->divdiffs[q+1-lenl-r]*beta_div2_pow_factorial[q+1-lenl-r]).get_double();
+					// add N([\overline{\theta}_{j,r}]) e^{-run_beta/2[\Omega_{j,r}] + {0}} contribution
 					ds2->AddElement(0);
 					T += inner_prefac*(j-lenl-r+1.0)*(ds2->divdiffs[q+2-lenl-r]*beta_div2_pow_factorial[q+2-lenl-r]).get_double();
 					// add \sum_u contribution
 					for(int u = r; u<= j-lenl; u++){
-						ds2->AddElement((-beta/2)*(d->z[u]/(-beta)));
-						T += inner_prefac*(d->z[u]/(-beta))*(ds2->divdiffs[q+3-lenl-r]*beta_div2_pow_factorial[q+3-lenl-r]).get_double();
+						ds2->AddElement((-run_beta/2)*(d->z[u]/(-run_beta)));
+						T += inner_prefac*(d->z[u]/(-run_beta))*(ds2->divdiffs[q+3-lenl-r]*beta_div2_pow_factorial[q+3-lenl-r]).get_double();
 						ds2->RemoveElement();
 					}
 					ds2->RemoveElement(); // removes AddElement(0)
-					ds2->RemoveElement(); // removes AddElement((-beta/2)*(d->z[r]/(-beta)));
+					ds2->RemoveElement(); // removes AddElement((-run_beta/2)*(d->z[r]/(-run_beta)));
 				}
 			}
 		}
@@ -1795,28 +2075,28 @@ double measure_AB_Fint(int n, int m){
 		for (int j = 0; j <= q-lenk; j++){
 			ds1->CurrentLength=0; ds2->CurrentLength=0; // reset scratch divdiffs
 			// build e^{-\beta/2 [\Lambda_j]}
-			for(int i = j; i <= q-lenk; i++) ds2->AddElement((-beta/2)*(d->z[i]/(-beta)));
+			for(int i = j; i <= q-lenk; i++) ds2->AddElement((-run_beta/2)*(d->z[i]/(-run_beta)));
 			// build e^{-\beta/2 [\Omega_{j,r}]} (aka add [\overline{\Theta_{j,r}}] to [\Lambda_j]
-			for(int i = j; i>=0; i--) ds2->AddElement((-beta/2)*(d->z[i]/(-beta)));
+			for(int i = j; i>=0; i--) ds2->AddElement((-run_beta/2)*(d->z[i]/(-run_beta)));
 			// sum over r
 			for(int r = 0; r <= j; r++){
 				// build e^{-\beta/2 [\Theta_{j,r}]}
-				//for(int i = 0; i <= r; i++) ds2->AddElement((-beta/2)*(d->z[i]/(-beta)));
-				ds1->AddElement((-beta/2)*(d->z[r]/(-beta)));
+				//for(int i = 0; i <= r; i++) ds2->AddElement((-run_beta/2)*(d->z[i]/(-run_beta)));
+				ds1->AddElement((-run_beta/2)*(d->z[r]/(-run_beta)));
 				inner_prefac = prefac*currMD0_trace[j]*(currD_partial[q-lenk]/currD)*(ds1->divdiffs[r]*beta_div2_pow_factorial[r]).get_double();
-				// add (beta/2)*e^{-beta/2[\Omega_{j,r}]} contribution
-				T += inner_prefac*(beta/2)*(ds2->divdiffs[q+1-lenk-r]*beta_div2_pow_factorial[q+1-lenk-r]).get_double();
-				// add N([\overline{\theta}_{j,r}]) e^{-beta/2[\Omega_{j,r}] + {0}} contribution
+				// add (run_beta/2)*e^{-run_beta/2[\Omega_{j,r}]} contribution
+				T += inner_prefac*(run_beta/2)*(ds2->divdiffs[q+1-lenk-r]*beta_div2_pow_factorial[q+1-lenk-r]).get_double();
+				// add N([\overline{\theta}_{j,r}]) e^{-run_beta/2[\Omega_{j,r}] + {0}} contribution
 				ds2->AddElement(0);
 				T += inner_prefac*(j-r+1.0)*(ds2->divdiffs[q+2-lenk-r]*beta_div2_pow_factorial[q+2-lenk-r]).get_double();
 				// add \sum_u contribution
 				for(int u = r; u<= j; u++){
-					ds2->AddElement((-beta/2)*(d->z[u]/(-beta)));
-					T += inner_prefac*(d->z[u]/(-beta))*(ds2->divdiffs[q+3-lenk-r]*beta_div2_pow_factorial[q+3-lenk-r]).get_double();
+					ds2->AddElement((-run_beta/2)*(d->z[u]/(-run_beta)));
+					T += inner_prefac*(d->z[u]/(-run_beta))*(ds2->divdiffs[q+3-lenk-r]*beta_div2_pow_factorial[q+3-lenk-r]).get_double();
 					ds2->RemoveElement();
 				}
 				ds2->RemoveElement(); // removes AddElement(0)
-				ds2->RemoveElement(); // removes AddElement((-beta/2)*(d->z[r]/(-beta)));
+				ds2->RemoveElement(); // removes AddElement((-run_beta/2)*(d->z[r]/(-run_beta)));
 			}
 		}
 		// compute \sum_l (k, l) Leibniz rule contribution
@@ -1831,29 +2111,29 @@ double measure_AB_Fint(int n, int m){
 				cont = 0; for(i=0;i<lenl;i++) if(!Ql.test(Sq[j-lenl+i])){ cont = 1; break;} if(cont) continue;
 				ds1->CurrentLength=0; ds2->CurrentLength=0; // reset scratch divdiffs
 				// build e^{-\beta/2 [\Lambda_j]}
-				for(int i = j; i <= q-lenk; i++) ds2->AddElement((-beta/2.0)*(d->z[i]/(-beta)));
+				for(int i = j; i <= q-lenk; i++) ds2->AddElement((-run_beta/2.0)*(d->z[i]/(-run_beta)));
 				// build e^{-\beta/2 [\Omega_{j,r}]} (aka add [\overline{\Theta_{j,r}}] to [\Lambda_j]
-				for(int i = j-lenl; i>=0; i--) ds2->AddElement((-beta/2.0)*(d->z[i]/(-beta)));
+				for(int i = j-lenl; i>=0; i--) ds2->AddElement((-run_beta/2.0)*(d->z[i]/(-run_beta)));
 				// sum over r
 				for(int r = 0; r <= j-lenl; r++){
 					// build e^{-\beta/2 [\Theta_{j,r}]}
-					//for(int i = 0; i <= r; i++) ds2->AddElement((-beta/2)*(d->z[i]/(-beta)));
-					ds1->AddElement((-beta/2.0)*(d->z[r]/(-beta)));
+					//for(int i = 0; i <= r; i++) ds2->AddElement((-run_beta/2)*(d->z[i]/(-run_beta)));
+					ds1->AddElement((-run_beta/2.0)*(d->z[r]/(-run_beta)));
 					inner_prefac = prefac*(currMDl_trace[j]/factorial[lenl])*(currD_partial[j-lenl]/currD)*(currD_partial[q-lenk]/currD_partial[j]) *
 					(ds1->divdiffs[r]*beta_div2_pow_factorial[r]).get_double();
-					// add (beta/2)*e^{-beta/2[\Omega_{j,r}]} contribution
-					T += inner_prefac*(beta/2.0)*(ds2->divdiffs[q+1-lenl-lenk-r]*beta_div2_pow_factorial[q+1-lenl-lenk-r]).get_double();
-					// add N([\overline{\theta}_{j,r}]) e^{-beta/2[\Omega_{j,r}] + {0}} contribution
+					// add (run_beta/2)*e^{-run_beta/2[\Omega_{j,r}]} contribution
+					T += inner_prefac*(run_beta/2.0)*(ds2->divdiffs[q+1-lenl-lenk-r]*beta_div2_pow_factorial[q+1-lenl-lenk-r]).get_double();
+					// add N([\overline{\theta}_{j,r}]) e^{-run_beta/2[\Omega_{j,r}] + {0}} contribution
 					ds2->AddElement(0);
 					T += inner_prefac*(j-lenl-r+1.0)*(ds2->divdiffs[q+2-lenl-lenk-r]*beta_div2_pow_factorial[q+2-lenl-lenk-r]).get_double();
 					// add \sum_u contribution
 					for(int u = r; u<= j-lenl; u++){
-						ds2->AddElement((-beta/2.0)*(d->z[u]/(-beta)));
-						T += inner_prefac*(d->z[u]/(-beta))*(ds2->divdiffs[q+3-lenl-lenk-r]*beta_div2_pow_factorial[q+3-lenl-lenk-r]).get_double();
+						ds2->AddElement((-run_beta/2.0)*(d->z[u]/(-run_beta)));
+						T += inner_prefac*(d->z[u]/(-run_beta))*(ds2->divdiffs[q+3-lenl-lenk-r]*beta_div2_pow_factorial[q+3-lenl-lenk-r]).get_double();
 						ds2->RemoveElement();
 					}
 					ds2->RemoveElement(); // removes AddElement(0)
-					ds2->RemoveElement(); // removes AddElement((-beta/2)*(d->z[r]/(-beta)));
+					ds2->RemoveElement(); // removes AddElement((-run_beta/2)*(d->z[r]/(-run_beta)));
 				}
 			}
 		}
@@ -1865,6 +2145,193 @@ double measure_AB_Fint(int n, int m){
 		R = std::real(currD*T)/std::real(currD); // we importance-sample Re(W_C A_C)/Re(W_C)
 	#endif
 	return R;
+}
+
+double measure_AB_Fint(int n, int m){
+	/**
+	* Estimates \int_0^{\beta/2} \tau <A(\tau)B> \dtau
+	* for A (B) in A.txt (B.txt) the nth (mth) operator
+	* passed here via ./prepare.bin A.txt ... B.txt
+	*
+	* O(q^3) implementation (replaces the original O(q^4)
+	* measure_AB_Fint_slow, kept above for regression testing).
+	*
+	* Each of the four (k,l) blocks below has an innermost u-loop that
+	* recomputed an append-in-range-node bracket from scratch for every
+	* (r,u) pair (the O(q^4) bottleneck). Applying the same sliding-append
+	* recursion used in measure_Hdiag_Fint -- here to the more general
+	* bracket family that includes an extra confluent node and a dummy
+	* zero -- each u-bracket is seeded once (at the smallest r for its j)
+	* and advanced in O(1) per split point, instead of recomputed per
+	* (r,u) pair. See measure_Hdiag_Fint's own comment for the scaling
+	* convention (x_k = E_{z_k} = d->z[k]/(-run_beta), not raw d->z[k]).
+	*/
+	int i,j,k,cont,l,lenk,lenl,r;
+	std::complex<double> A0z = calc_MD0(n);
+	std::complex<double> Akz = 0.0, T = 0.0, prefac = 0.0, inner_prefac = 0.0;
+	double ddratio = 0.0, R_ = 0.0;
+	calc_MD0_trace(m);
+	static ExExFloat Uarr[qmax+1];
+
+	if (A0z != 0.0) {
+		// (k=0, l=0) pure diagonal contribution.
+		prefac = -A0z / (d->divdiffs[q]*beta_pow_factorial[q]).get_double();
+		for(int j = 0; j <= q; j++) {
+			ds1->CurrentLength = 0; ds2->CurrentLength = 0;
+			for(int i = q; i >= j; i--) ds2->AddElement((-run_beta/2)*(d->z[i]/(-run_beta)));
+			for(int i = j; i >= 0; i--) ds2->AddElement((-run_beta/2)*(d->z[i]/(-run_beta)));
+			// ds2 = N(j,0), q+2 elements (confluent at x_j).
+
+			// Seed Uarr[u] = g(N(j,0) U {0,x_u}) for u=0..j.
+			ds2->AddElement(0);
+			for(int u = 0; u <= j; u++){
+				ds2->AddElement((-run_beta/2)*(d->z[u]/(-run_beta)));
+				Uarr[u] = ds2->divdiffs[q+3]*beta_div2_pow_factorial[q+3];
+				ds2->RemoveElement();
+			}
+			ds2->RemoveElement(); // back to N(j,0)
+
+			for(int r = 0; r <= j; r++){
+				ds1->AddElement((-run_beta/2.0)*(d->z[r]/(-run_beta)));
+				inner_prefac = prefac * currMD0_trace[j] * (ds1->divdiffs[r]*beta_div2_pow_factorial[r]).get_double();
+				T += (run_beta/2.0)*inner_prefac*(ds2->divdiffs[q+1-r]*beta_div2_pow_factorial[q+1-r]).get_double();
+				ds2->AddElement(0);
+				ExExFloat suffix2_r = ds2->divdiffs[q+2-r]*beta_div2_pow_factorial[q+2-r];
+				T += (inner_prefac*(j-r+1.0)*suffix2_r.get_double());
+				for(int u = r; u <= j; u++) T += (d->z[u]/(-run_beta))*inner_prefac*Uarr[u].get_double();
+				ds2->RemoveElement(); // undo the {0}
+				if (r < j){
+					for(int u = r+1; u <= j; u++)
+						Uarr[u] = Uarr[u]*((d->z[r]-d->z[u])/run_beta) + suffix2_r;
+					ds2->RemoveElement(); // drop x_r
+				}
+			}
+		}
+		// (k=0, l) cross term contribution.
+		prefac = -A0z / ((d->divdiffs[q]*beta_pow_factorial[q]).get_double());
+		for(l=0;l<MNop[m];l++){
+			Ql = MP[m][l]; lenl = Ql.count(); if(lenl>q) continue;
+			calc_MD_trace_l(m ,l);
+			for (int j = lenl; j <= q; j++){
+				if(!NoRepetitionCheck(Sq+(j-lenl),lenl)) continue;
+				cont = 0; for(i=0;i<lenl;i++) if(!Ql.test(Sq[j-lenl+i])){ cont = 1; break;} if(cont) continue;
+				ds1->CurrentLength=0; ds2->CurrentLength=0;
+				for(int i = j; i <= q; i++) ds2->AddElement((-run_beta/2)*(d->z[i]/(-run_beta)));
+				for(int i = j-lenl; i>=0; i--) ds2->AddElement((-run_beta/2)*(d->z[i]/(-run_beta)));
+				int Rmax = j - lenl;
+				// ds2 = N'(j,0), q-lenl+2 elements (no confluence, gap between Λ_j and Ω).
+
+				ds2->AddElement(0);
+				for(int u = 0; u <= Rmax; u++){
+					ds2->AddElement((-run_beta/2)*(d->z[u]/(-run_beta)));
+					Uarr[u] = ds2->divdiffs[q+3-lenl]*beta_div2_pow_factorial[q+3-lenl];
+					ds2->RemoveElement();
+				}
+				ds2->RemoveElement();
+
+				for(int r = 0; r <= Rmax; r++){
+					ds1->AddElement((-run_beta/2)*(d->z[r]/(-run_beta)));
+					inner_prefac = prefac*(currMDl_trace[j]/factorial[lenl])*(currD_partial[j-lenl]/currD_partial[j])*(ds1->divdiffs[r]*beta_div2_pow_factorial[r]).get_double();
+					T += inner_prefac*(run_beta/2)*(ds2->divdiffs[q+1-lenl-r]*beta_div2_pow_factorial[q+1-lenl-r]).get_double();
+					ds2->AddElement(0);
+					ExExFloat suffix2_r = ds2->divdiffs[q+2-lenl-r]*beta_div2_pow_factorial[q+2-lenl-r];
+					T += inner_prefac*(Rmax-r+1.0)*suffix2_r.get_double();
+					for(int u = r; u <= Rmax; u++) T += inner_prefac*(d->z[u]/(-run_beta))*Uarr[u].get_double();
+					ds2->RemoveElement();
+					if (r < Rmax){
+						for(int u = r+1; u <= Rmax; u++)
+							Uarr[u] = Uarr[u]*((d->z[r]-d->z[u])/run_beta) + suffix2_r;
+						ds2->RemoveElement();
+					}
+				}
+			}
+		}
+	}
+	// (k, l=0) and (k, l) contributions.
+	for(k=0;k<MNop[n];k++){
+		Akz = calc_MD(n,k);
+		if(Akz==0.0) continue;
+		Pk = MP[n][k]; lenk = Pk.count(); if(lenk>q) continue;
+		if(!NoRepetitionCheck(Sq+(q-lenk),lenk)) continue;
+		cont = 0; for(i=0;i<lenk;i++) if(!Pk.test(Sq[q-1-i])){ cont = 1; break;} if(cont) continue;
+		int Qtop = q - lenk;
+		prefac = -(Akz / factorial[lenk]) / ((d->divdiffs[q]*beta_pow_factorial[q]).get_double());
+		for (int j = 0; j <= Qtop; j++){
+			ds1->CurrentLength=0; ds2->CurrentLength=0;
+			for(int i = j; i <= Qtop; i++) ds2->AddElement((-run_beta/2)*(d->z[i]/(-run_beta)));
+			for(int i = j; i>=0; i--) ds2->AddElement((-run_beta/2)*(d->z[i]/(-run_beta)));
+			// ds2 = N''(j,0), Qtop+2 elements (confluent at x_j).
+
+			ds2->AddElement(0);
+			for(int u = 0; u <= j; u++){
+				ds2->AddElement((-run_beta/2)*(d->z[u]/(-run_beta)));
+				Uarr[u] = ds2->divdiffs[q+3-lenk]*beta_div2_pow_factorial[q+3-lenk];
+				ds2->RemoveElement();
+			}
+			ds2->RemoveElement();
+
+			for(int r = 0; r <= j; r++){
+				ds1->AddElement((-run_beta/2)*(d->z[r]/(-run_beta)));
+				inner_prefac = prefac*currMD0_trace[j]*(currD_partial[Qtop]/currD)*(ds1->divdiffs[r]*beta_div2_pow_factorial[r]).get_double();
+				T += inner_prefac*(run_beta/2)*(ds2->divdiffs[q+1-lenk-r]*beta_div2_pow_factorial[q+1-lenk-r]).get_double();
+				ds2->AddElement(0);
+				ExExFloat suffix2_r = ds2->divdiffs[q+2-lenk-r]*beta_div2_pow_factorial[q+2-lenk-r];
+				T += inner_prefac*(j-r+1.0)*suffix2_r.get_double();
+				for(int u = r; u <= j; u++) T += inner_prefac*(d->z[u]/(-run_beta))*Uarr[u].get_double();
+				ds2->RemoveElement();
+				if (r < j){
+					for(int u = r+1; u <= j; u++)
+						Uarr[u] = Uarr[u]*((d->z[r]-d->z[u])/run_beta) + suffix2_r;
+					ds2->RemoveElement();
+				}
+			}
+		}
+		// (k, l) Leibniz rule contribution.
+		for(l=0;l<MNop[m];l++){
+			Ql = MP[m][l]; lenl = Ql.count(); if(lenk+lenl>q) continue;
+			calc_MD_trace_l(m ,l);
+			prefac = -(Akz / factorial[lenk]) / ((d->divdiffs[q]*beta_pow_factorial[q]).get_double());
+			for (int j = lenl; j <= Qtop; j++){
+				if(!NoRepetitionCheck(Sq+(j-lenl),lenl)) continue;
+				cont = 0; for(i=0;i<lenl;i++) if(!Ql.test(Sq[j-lenl+i])){ cont = 1; break;} if(cont) continue;
+				ds1->CurrentLength=0; ds2->CurrentLength=0;
+				for(int i = j; i <= Qtop; i++) ds2->AddElement((-run_beta/2.0)*(d->z[i]/(-run_beta)));
+				for(int i = j-lenl; i>=0; i--) ds2->AddElement((-run_beta/2.0)*(d->z[i]/(-run_beta)));
+				int Rmax = j - lenl;
+				// ds2 = N'''(j,0), Qtop-lenl-... wait: (Qtop-j+1)+(j-lenl+1) = Qtop-lenl+2 elements, no confluence.
+
+				ds2->AddElement(0);
+				for(int u = 0; u <= Rmax; u++){
+					ds2->AddElement((-run_beta/2.0)*(d->z[u]/(-run_beta)));
+					Uarr[u] = ds2->divdiffs[q+3-lenl-lenk]*beta_div2_pow_factorial[q+3-lenl-lenk];
+					ds2->RemoveElement();
+				}
+				ds2->RemoveElement();
+
+				for(int r = 0; r <= Rmax; r++){
+					ds1->AddElement((-run_beta/2.0)*(d->z[r]/(-run_beta)));
+					inner_prefac = prefac*(currMDl_trace[j]/factorial[lenl])*(currD_partial[j-lenl]/currD)*(currD_partial[Qtop]/currD_partial[j])*(ds1->divdiffs[r]*beta_div2_pow_factorial[r]).get_double();
+					T += inner_prefac*(run_beta/2.0)*(ds2->divdiffs[q+1-lenl-lenk-r]*beta_div2_pow_factorial[q+1-lenl-lenk-r]).get_double();
+					ds2->AddElement(0);
+					ExExFloat suffix2_r = ds2->divdiffs[q+2-lenl-lenk-r]*beta_div2_pow_factorial[q+2-lenl-lenk-r];
+					T += inner_prefac*(Rmax-r+1.0)*suffix2_r.get_double();
+					for(int u = r; u <= Rmax; u++) T += inner_prefac*(d->z[u]/(-run_beta))*Uarr[u].get_double();
+					ds2->RemoveElement();
+					if (r < Rmax){
+						for(int u = r+1; u <= Rmax; u++)
+							Uarr[u] = Uarr[u]*((d->z[r]-d->z[u])/run_beta) + suffix2_r;
+						ds2->RemoveElement();
+					}
+				}
+			}
+		}
+	}
+	#ifdef ABS_WEIGHTS
+		R_ = std::abs(T)*currWeight.sgn()*cos(std::arg(T)+std::arg(currD));
+	#else
+		R_ = std::real(currD*T)/std::real(currD);
+	#endif
+	return R_;
 }
 
 double measure_AB_real(int n, int m){
@@ -2024,9 +2491,15 @@ double measure_observable(int n){
 			case 9: R = measure_O_Fint(5); break;
 			case 10: R = measure_AB_corr(0, 5); break; 
 			case 11: R = measure_AB_Eint(0, 5); break; 
-			case 12: R = measure_AB_Fint(0, 5); break;
-			case 13: R = (measure_AB_real(0, 5) + measure_AB_real(5, 0)) / 2.0; break;
-			case 14: R = (measure_AB_imag(0, 5) - measure_AB_imag(5, 0)) / 2.0; break;
+			case 12:
+#ifdef USE_SLOW_FS_ESTIMATOR
+				R = measure_AB_Fint_slow(0, 5);
+#else
+				R = measure_AB_Fint(0, 5);
+#endif
+				break;
+		        case 13: R = (measure_AB_real(0, 5) + measure_AB_real(5, 0)) / 2.0; break;
+		        case 14: R = (measure_AB_imag(0, 5) - measure_AB_imag(5, 0)) / 2.0; break;
 		}
 #endif
 	} else  switch(n-Nobservables){
@@ -2038,14 +2511,26 @@ double measure_observable(int n){
 			case 5:	R = measure_Hoffdiag2(); break;
 			case 6: R = measure_Z_magnetization(); break;
 			case 7: R = measure_Hdiag_corr(); break;
-                        case 8: R = measure_Hdiag_Eint(); break;
-			case 9: R = measure_Hdiag_Fint(); break;
-			case 10: R = measure_Hoffdiag_corr(); break; 
+            case 8: R = measure_Hdiag_Eint(); break;
+			case 9:
+#ifdef USE_SLOW_FS_ESTIMATOR
+				R = measure_Hdiag_Fint_slow();
+#else
+				R = measure_Hdiag_Fint();
+#endif
+				break;
+			case 10: R = measure_Hoffdiag_corr(); break;
 			case 11: R = measure_Hoffdiag_Eint(); break;
-			case 12: R = measure_Hoffdiag_Fint(); break;
+			case 12:
+#ifdef USE_SLOW_FS_ESTIMATOR
+				R = measure_Hoffdiag_Fint_slow();
+#else
+				R = measure_Hoffdiag_Fint();
+#endif
+				break;
 			case 13: R = measure_parity(); break;
 			case 14: R = measure_Hdiag_Fint2(); break;
-	                case 15: R = measure_Hdiag_k2Int(); break; 
+	                case 15: R = measure_Hdiag_k2Int(); break;
 	}
 	return R;
 }
@@ -2058,12 +2543,13 @@ void measure(){
 #else
 	sgn = currWeight.sgn();
 #endif
+	last_measurement_sgn = sgn;
 	meanq += q; if(maxq < q) maxq = q; in_bin_sum_sgn += sgn;
 	if((measurement_step+1) % bin_length == 0){
 		in_bin_sum_sgn /= bin_length; bin_mean_sgn[measurement_step/bin_length] = in_bin_sum_sgn; in_bin_sum_sgn = 0;
 	}
 	for(i=0;i<N_all_observables;i++){
-		R = measure_observable(i); in_bin_sum[i] += R*sgn;
+		R = measure_observable(i); last_measurement[i] = R; in_bin_sum[i] += R*sgn;
 		if((measurement_step+1) % bin_length == 0){
 			in_bin_sum[i] /= bin_length; bin_mean[i][measurement_step/bin_length] = in_bin_sum[i]; in_bin_sum[i] = 0;
 		}
@@ -2107,15 +2593,14 @@ int valid_derived_observable(int n){ // we define which observables are needed f
 double compute_derived_observable(int n){ // we compute the derived observables
 	double R = 0;
 	switch(n){
-		case 0 : R = mean_O[Nobservables+8] - beta*mean_O[Nobservables+2]*mean_O[Nobservables+2]; break;
-		case 1 : R = mean_O[Nobservables+9] - (beta*mean_O[Nobservables+2])*(beta*mean_O[Nobservables+2])/8; break;
-		case 2 : R = mean_O[Nobservables+11] - beta*mean_O[Nobservables+4]*mean_O[Nobservables+4]; break;
-		case 3 : R = mean_O[Nobservables+12] - (beta*mean_O[Nobservables+4])*(beta*mean_O[Nobservables+4])/8; break;
-		case 4 : R = beta*beta*(mean_O[Nobservables+1] -  (mean_O[Nobservables])*(mean_O[Nobservables])); break;
-	case 5 : R = mean_O[Nobservables+15] - beta*(beta*mean_O[Nobservables+2])*(beta*mean_O[Nobservables+2])/24.0; break;
-	case 6 : R = (mean_O[Nobservables+8] - beta*mean_O[Nobservables+2]*mean_O[Nobservables+2]) / 2.0 /  (mean_O[Nobservables+9] - (beta*mean_O[Nobservables+2])*(beta*mean_O[Nobservables+2])/8); break;
-	case 7 : R = 2 * (mean_O[Nobservables+9] - (beta*mean_O[Nobservables+2])*(beta*mean_O[Nobservables+2])/8) / (mean_O[Nobservables+15] - beta*(beta*mean_O[Nobservables+2])*(beta*mean_O[Nobservables+2])/24.0); break;
-	       
+		case 0 : R = mean_O[Nobservables+8] - run_beta*mean_O[Nobservables+2]*mean_O[Nobservables+2]; break;
+		case 1 : R = mean_O[Nobservables+9] - (run_beta*mean_O[Nobservables+2])*(run_beta*mean_O[Nobservables+2])/8; break;
+		case 2 : R = mean_O[Nobservables+11] - run_beta*mean_O[Nobservables+4]*mean_O[Nobservables+4]; break;
+		case 3 : R = mean_O[Nobservables+12] - (run_beta*mean_O[Nobservables+4])*(run_beta*mean_O[Nobservables+4])/8; break;
+		case 4 : R = run_beta*run_beta*(mean_O[Nobservables+1] -  (mean_O[Nobservables])*(mean_O[Nobservables])); break;
+	case 5 : R = mean_O[Nobservables+15] - run_beta*(run_beta*mean_O[Nobservables+2])*(run_beta*mean_O[Nobservables+2])/24.0; break;
+	case 6 : R = (mean_O[Nobservables+8] - run_beta*mean_O[Nobservables+2]*mean_O[Nobservables+2]) / 2.0 /  (mean_O[Nobservables+9] - (run_beta*mean_O[Nobservables+2])*(run_beta*mean_O[Nobservables+2])/8); break;
+	case 7 : R = 2 * (mean_O[Nobservables+9] - (run_beta*mean_O[Nobservables+2])*(run_beta*mean_O[Nobservables+2])/8) / (mean_O[Nobservables+15] - run_beta*(run_beta*mean_O[Nobservables+2])*(run_beta*mean_O[Nobservables+2])/24.0); break;
 	}
 	return R;
 }

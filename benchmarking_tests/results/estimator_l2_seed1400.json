@@ -1,0 +1,16 @@
+{
+  "compared_columns_per_row": 34,
+  "compared_rows": 40000,
+  "correctness_pass": true,
+  "fast_measurement_core_seconds": 10.956677599999995,
+  "fast_run_id": "c7f8e45657933304",
+  "fast_wall_seconds": 4.5037737999991805,
+  "max_abs_difference": 5.684341886080802e-14,
+  "measurement_speedup": 4.733719654213437,
+  "mismatches": 0,
+  "reference_measurement_core_seconds": 51.865840100000085,
+  "reference_run_id": "43f10e1bf6f061cd",
+  "reference_wall_seconds": 17.58128729999953,
+  "tolerance": 1e-10,
+  "wall_speedup": 3.903679021358206
+}

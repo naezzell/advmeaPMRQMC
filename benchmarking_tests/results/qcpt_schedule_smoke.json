@@ -1,0 +1,273 @@
+{
+  "analysis_commit": "commit containing this artifact",
+  "archive": {
+    "ordered_run_manifest_checksum_sha256": "ecde0ea272b1c5f1fa1eef5f9631568a82f48ef94e15de8261e13271ab94068e",
+    "ordered_trace_checksum_manifest_sha256": "b69e4c5fc49739b09731197a3b5f7899de4b1c0895b61dd95d18a8385cfbd45c",
+    "path": "benchmarking_tests/artifacts/qcpt_schedule_smoke_v1/runs",
+    "run_count": 24,
+    "stream_trace_bytes": 208238609
+  },
+  "bootstrap_samples": 10000,
+  "bootstrap_seed": 20260809,
+  "campaign": "qcpt_schedule_smoke_v1",
+  "environment": {
+    "compiler": "g++ (Ubuntu 9.4.0-1ubuntu1~20.04.2) 9.4.0",
+    "cpu_count": 4,
+    "cpu_model": "Intel(R) Core(TM) i5-6600K CPU @ 3.50GHz",
+    "hostname": "DESKTOP-EI02VVQ",
+    "mpi_compiler": "g++ (Ubuntu 9.4.0-1ubuntu1~20.04.2) 9.4.0",
+    "platform": "Linux-5.10.16.3-microsoft-standard-WSL2-x86_64-with-glibc2.31",
+    "python": "3.9.5 (default, Jun  4 2021, 12:28:51) \n[GCC 7.5.0]"
+  },
+  "limitations": [
+    "This L=2 smoke validates schedule selection and sweep reuse, not critical scaling.",
+    "Each run contains one four-slot ladder; cross-seed R-hat is not yet computed jointly.",
+    "The production precision gate fails even though exact and convergence gates pass."
+  ],
+  "matched_comparisons": {
+    "classical_dogleg": {
+      "seeds": [
+        1100,
+        2100,
+        3100,
+        4100
+      ],
+      "winner_to_candidate_objective_ratio": {
+        "bootstrap_95_interval": [
+          0.8808856630649865,
+          1.8282499363593159
+        ],
+        "median": 1.1619995156190728,
+        "values": [
+          1.8282499363593159,
+          0.8808856630649865,
+          1.1562226011347283,
+          1.1677764301034173
+        ]
+      },
+      "winner_to_candidate_target_ratio": {
+        "bootstrap_95_interval": [
+          1.0322076369793198,
+          1.8955991805910326
+        ],
+        "median": 1.329210917899498,
+        "values": [
+          1.8955991805910326,
+          1.4060655062597884,
+          1.0322076369793198,
+          1.2523563295392077
+        ]
+      }
+    },
+    "diagonal_p0_5": {
+      "seeds": [
+        1100,
+        2100,
+        3100,
+        4100
+      ],
+      "winner_to_candidate_objective_ratio": {
+        "bootstrap_95_interval": [
+          2.134703948195764,
+          2.940748570780312
+        ],
+        "median": 2.685505105180244,
+        "values": [
+          2.7591300887206187,
+          2.61188012163987,
+          2.940748570780312,
+          2.134703948195764
+        ]
+      },
+      "winner_to_candidate_target_ratio": {
+        "bootstrap_95_interval": [
+          0.766510968851978,
+          1.4235283281147069
+        ],
+        "median": 1.061197311225079,
+        "values": [
+          1.4235283281147069,
+          1.2439028643382963,
+          0.766510968851978,
+          0.8784917581118615
+        ]
+      }
+    },
+    "diagonal_p1": {
+      "seeds": [
+        1100,
+        2100,
+        3100,
+        4100
+      ],
+      "winner_to_candidate_objective_ratio": {
+        "bootstrap_95_interval": [
+          2.038732106930149,
+          3.5555886647592327
+        ],
+        "median": 2.3231811797766904,
+        "values": [
+          3.5555886647592327,
+          2.5755686238174267,
+          2.038732106930149,
+          2.0707937357359536
+        ]
+      },
+      "winner_to_candidate_target_ratio": {
+        "bootstrap_95_interval": [
+          0.71538818569606,
+          1.5925322581574997
+        ],
+        "median": 0.9624295173648454,
+        "values": [
+          1.5925322581574997,
+          1.1564411239954928,
+          0.71538818569606,
+          0.7684179107341981
+        ]
+      }
+    },
+    "diagonal_p2": {
+      "seeds": [
+        1100,
+        2100,
+        3100,
+        4100
+      ],
+      "winner_to_candidate_objective_ratio": {
+        "bootstrap_95_interval": [
+          1.9573414914218656,
+          2.7149691891152816
+        ],
+        "median": 2.25233504362296,
+        "values": [
+          2.509064753778439,
+          2.7149691891152816,
+          1.9956053334674808,
+          1.9573414914218656
+        ]
+      },
+      "winner_to_candidate_target_ratio": {
+        "bootstrap_95_interval": [
+          0.7250593284145695,
+          1.6611797698569741
+        ],
+        "median": 0.9533182042600437,
+        "values": [
+          1.1404272798764497,
+          1.6611797698569741,
+          0.7250593284145695,
+          0.7662091286436375
+        ]
+      }
+    }
+  },
+  "production_convergence_gate": true,
+  "production_exact_gate": true,
+  "production_precision_gate": false,
+  "production_run_ids": [
+    "1ce2cac962450bc5",
+    "70f35b98e79a5a51",
+    "f0e1b9776116201c",
+    "fcb005adea87281d"
+  ],
+  "production_seeds": [
+    5100,
+    6100,
+    7100,
+    8100
+  ],
+  "schedules": {
+    "classical_dogleg": {
+      "all_convergence_gates": true,
+      "all_sign_gates": true,
+      "any_qmax": false,
+      "median_objective_ess_per_core_hour": 1263991.4336421508,
+      "median_target_ess_per_core_hour": 66477.55709867281,
+      "objective_coverage_fraction": 0.5,
+      "round_trips": 1707,
+      "run_ids": [
+        "954f5f114309d6ef",
+        "99a60196c7e33b44",
+        "b060a7ba0745a728",
+        "ff46513f4e3e1704"
+      ],
+      "worst_edge_acceptance": 0.0954286
+    },
+    "diagonal_p0_5": {
+      "all_convergence_gates": true,
+      "all_sign_gates": true,
+      "any_qmax": false,
+      "median_objective_ess_per_core_hour": 609398.1597060391,
+      "median_target_ess_per_core_hour": 91623.85952308243,
+      "objective_coverage_fraction": 0.25,
+      "round_trips": 3447,
+      "run_ids": [
+        "140b897804730d3b",
+        "55986c69a0513292",
+        "b63152284b1b22f2",
+        "dd8195e53475313b"
+      ],
+      "worst_edge_acceptance": 0.310857
+    },
+    "diagonal_p1": {
+      "all_convergence_gates": true,
+      "all_sign_gates": true,
+      "any_qmax": false,
+      "median_objective_ess_per_core_hour": 653493.4874277571,
+      "median_target_ess_per_core_hour": 93648.74663680844,
+      "objective_coverage_fraction": 0.25,
+      "round_trips": 3132,
+      "run_ids": [
+        "744a2a8684febfc8",
+        "85d776f380038b7b",
+        "dafba6e0935b1aab",
+        "f43db3e7a50fbd0f"
+      ],
+      "worst_edge_acceptance": 0.24
+    },
+    "diagonal_p2": {
+      "all_convergence_gates": true,
+      "all_sign_gates": true,
+      "any_qmax": false,
+      "median_objective_ess_per_core_hour": 713856.4779281461,
+      "median_target_ess_per_core_hour": 108720.34875040202,
+      "objective_coverage_fraction": 0.25,
+      "round_trips": 2548,
+      "run_ids": [
+        "1f9c65d28e99b847",
+        "29062e2d47ae28b4",
+        "3b514ec7557e8a8f",
+        "e0e2f66bed9c27ef"
+      ],
+      "worst_edge_acceptance": 0.16019
+    },
+    "pure_beta": {
+      "all_convergence_gates": true,
+      "all_sign_gates": true,
+      "any_qmax": false,
+      "median_objective_ess_per_core_hour": 1518957.383270191,
+      "median_target_ess_per_core_hour": 87427.04854763745,
+      "objective_coverage_fraction": 0.5,
+      "round_trips": 4228,
+      "run_ids": [
+        "2fe049e34827a27c",
+        "383e99be3dbf535c",
+        "696688978a540c35",
+        "6c278469c15ce3ee"
+      ],
+      "worst_edge_acceptance": 0.431429
+    }
+  },
+  "schema_version": 1,
+  "selected_schedule": "pure_beta",
+  "selection_metric": "objective",
+  "tuning_exact_gate": true,
+  "tuning_seeds": [
+    1100,
+    2100,
+    3100,
+    4100
+  ],
+  "tuning_steps": 100000
+}

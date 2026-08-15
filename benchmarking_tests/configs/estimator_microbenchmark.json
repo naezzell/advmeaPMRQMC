@@ -1,0 +1,24 @@
+{
+  "campaign": "fs_estimator_microbenchmark",
+  "methods": ["current_fixed"],
+  "seeds": [1400, 2400, 3400, 4400],
+  "simulation": {
+    "Tsteps": 2000,
+    "steps": 10000,
+    "steps_per_measurement": 1,
+    "qmax": 2048,
+    "nbins": 100,
+    "max_wall_seconds": 600
+  },
+  "matrices": [
+    {
+      "L": [2, 3],
+      "lambda": [3.044],
+      "beta_over_L": [1.0],
+      "periodic": true,
+      "representation": "standard",
+      "protocols": ["none", "cheap", "es_only", "fs_only", "advanced", "advanced_slow"],
+      "tuning": true
+    }
+  ]
+}
