@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "analysis_commit": "commit containing this artifact",
+  "protocol": "8x8 OBC standard TFIM, beta=1, Gamma={0.1,0.5,1.0,1.5}, one seed group of four MPI chains per coordinate, Tsteps=100000, steps=1000000, interval=100, all standard observables",
+  "runs": [
+    {"run_id": "3f8eb4f7d9e79f32", "source_commit": "3487875", "lambda": 0.1, "wall_seconds": 4.006497500002297, "mean_q": 0.19, "energy_iat": 6.231789516257767, "energy_ess_per_core_hour": 1392060.3470944567, "rhat": 1.000442269317853, "thermalization_pass": false, "correlation_pass": true, "manifest_sha256": "fe61c441e47825ebb15ff2f3a67c7a9244f6407016762b62131b16f58d17d382", "stream_trace_bytes": 7725729, "ordered_trace_checksum_manifest_sha256": "19e5add9402b6d6ef2a3c507d21ee158734c396e8d4823fe5d604bf77ec202e5"},
+    {"run_id": "9b7fe351d0d97a75", "source_commit": "0e4bb21", "lambda": 0.5, "wall_seconds": 12.286784899999475, "mean_q": 4.77125, "energy_iat": 8.446965602324205, "energy_ess_per_core_hour": 343494.13787682896, "rhat": 1.0001925485396472, "thermalization_pass": true, "correlation_pass": true, "manifest_sha256": "e256dd6c02ac2f16044c27f107c7fe58753978a97e91c884b586d341326b50c3", "stream_trace_bytes": 17135513, "ordered_trace_checksum_manifest_sha256": "985acbd3cad2347e2d6f75c5ff860855527d5fa36a1f831192819de76ba0c2cf"},
+    {"run_id": "88c1dd756cadef1c", "source_commit": "0e4bb21", "lambda": 1.0, "wall_seconds": 51.47101599999951, "mean_q": 19.689, "energy_iat": 12.370233526577888, "energy_ess_per_core_hour": 57869.73229095724, "rhat": 1.0017683721201167, "thermalization_pass": true, "correlation_pass": true, "manifest_sha256": "8dbf8dc7bd5e7f7b86ab5e3c8f90beb5ca8ff95886eaa0a8708ab0b02a2e7d17", "stream_trace_bytes": 18243182, "ordered_trace_checksum_manifest_sha256": "6f2b5b45e9e78db8b8856c3ad82e2f6b1bc28bcd5f51d89cc1cabd148d6a7437"},
+    {"run_id": "bb217af4b694b0eb", "source_commit": "3487875", "lambda": 1.5, "wall_seconds": 202.15324839999812, "mean_q": 44.92685, "energy_iat": 33.62012333331553, "energy_ess_per_core_hour": 4864.480518424316, "rhat": 1.0180598422889755, "thermalization_pass": false, "correlation_pass": false, "manifest_sha256": "c11915fa39db57e31e92f32e60452bca0b3e2e31282dc2d4c23eda4620f4da31", "stream_trace_bytes": 18235954, "ordered_trace_checksum_manifest_sha256": "4ab25352ef0cbd26cbf8d260d74413f9ae57b8ec25a717c800950aa707d56695"}
+  ],
+  "archive_comparisons": [
+    "historical_8x8_gamma0p1_archive_comparison.json",
+    "historical_8x8_gamma0p5_archive_comparison.json",
+    "historical_8x8_gamma1_archive_comparison.json",
+    "historical_8x8_gamma1p5_archive_comparison.json"
+  ],
+  "all_historical_gates_pass": true,
+  "production_summary": "Energy precision passes through Gamma=1, but no advanced-observable point passes all precision targets; only Gamma=0.5 and 1 pass both thermalization and correlation gates."
+}

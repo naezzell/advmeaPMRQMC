@@ -1,0 +1,559 @@
+{
+  "schema_version": 1,
+  "model": "paper_tfim_3regular",
+  "description": "Deterministic catalog; generated Hamiltonians are local artifacts and are not committed.",
+  "sizes": [
+    4,
+    6,
+    8,
+    10,
+    12,
+    36,
+    60,
+    96,
+    128
+  ],
+  "paper_reference_gamma_values": [
+    0.1,
+    0.4
+  ],
+  "paper_reference_gamma_note": "Reference transverse-field strengths used in the papers; H_fixed and H_gamma define the model for arbitrary Gamma.",
+  "instances": [
+    {
+      "id": "fixture_4",
+      "n": 4,
+      "seed": 1004
+    },
+    {
+      "id": "fixture_6",
+      "n": 6,
+      "seed": 1006
+    },
+    {
+      "id": "fixture_8",
+      "n": 8,
+      "seed": 1008
+    },
+    {
+      "id": "fixture_10",
+      "n": 10,
+      "seed": 1010
+    },
+    {
+      "id": "fixture_12",
+      "n": 12,
+      "seed": 1012
+    },
+    {
+      "id": "fixture_36",
+      "n": 36,
+      "seed": 1036
+    },
+    {
+      "id": "fixture_60",
+      "n": 60,
+      "seed": 1060
+    },
+    {
+      "id": "instance_001",
+      "n": 96,
+      "seed": 960001
+    },
+    {
+      "id": "instance_002",
+      "n": 96,
+      "seed": 960002
+    },
+    {
+      "id": "instance_003",
+      "n": 96,
+      "seed": 960003
+    },
+    {
+      "id": "instance_004",
+      "n": 96,
+      "seed": 960004
+    },
+    {
+      "id": "instance_005",
+      "n": 96,
+      "seed": 960005
+    },
+    {
+      "id": "instance_006",
+      "n": 96,
+      "seed": 960006
+    },
+    {
+      "id": "instance_007",
+      "n": 96,
+      "seed": 960007
+    },
+    {
+      "id": "instance_008",
+      "n": 96,
+      "seed": 960008
+    },
+    {
+      "id": "instance_009",
+      "n": 96,
+      "seed": 960009
+    },
+    {
+      "id": "instance_010",
+      "n": 96,
+      "seed": 960010
+    },
+    {
+      "id": "instance_011",
+      "n": 96,
+      "seed": 960011
+    },
+    {
+      "id": "instance_012",
+      "n": 96,
+      "seed": 960012
+    },
+    {
+      "id": "instance_013",
+      "n": 96,
+      "seed": 960013
+    },
+    {
+      "id": "instance_014",
+      "n": 96,
+      "seed": 960014
+    },
+    {
+      "id": "instance_015",
+      "n": 96,
+      "seed": 960015
+    },
+    {
+      "id": "instance_016",
+      "n": 96,
+      "seed": 960016
+    },
+    {
+      "id": "instance_017",
+      "n": 96,
+      "seed": 960017
+    },
+    {
+      "id": "instance_018",
+      "n": 96,
+      "seed": 960018
+    },
+    {
+      "id": "instance_019",
+      "n": 96,
+      "seed": 960019
+    },
+    {
+      "id": "instance_020",
+      "n": 96,
+      "seed": 960020
+    },
+    {
+      "id": "instance_021",
+      "n": 96,
+      "seed": 960021
+    },
+    {
+      "id": "instance_022",
+      "n": 96,
+      "seed": 960022
+    },
+    {
+      "id": "instance_023",
+      "n": 96,
+      "seed": 960023
+    },
+    {
+      "id": "instance_024",
+      "n": 96,
+      "seed": 960024
+    },
+    {
+      "id": "instance_025",
+      "n": 96,
+      "seed": 960025
+    },
+    {
+      "id": "instance_026",
+      "n": 96,
+      "seed": 960026
+    },
+    {
+      "id": "instance_027",
+      "n": 96,
+      "seed": 960027
+    },
+    {
+      "id": "instance_028",
+      "n": 96,
+      "seed": 960028
+    },
+    {
+      "id": "instance_029",
+      "n": 96,
+      "seed": 960029
+    },
+    {
+      "id": "instance_030",
+      "n": 96,
+      "seed": 960030
+    },
+    {
+      "id": "instance_031",
+      "n": 96,
+      "seed": 960031
+    },
+    {
+      "id": "instance_032",
+      "n": 96,
+      "seed": 960032
+    },
+    {
+      "id": "instance_033",
+      "n": 96,
+      "seed": 960033
+    },
+    {
+      "id": "instance_034",
+      "n": 96,
+      "seed": 960034
+    },
+    {
+      "id": "instance_035",
+      "n": 96,
+      "seed": 960035
+    },
+    {
+      "id": "instance_036",
+      "n": 96,
+      "seed": 960036
+    },
+    {
+      "id": "instance_037",
+      "n": 96,
+      "seed": 960037
+    },
+    {
+      "id": "instance_038",
+      "n": 96,
+      "seed": 960038
+    },
+    {
+      "id": "instance_039",
+      "n": 96,
+      "seed": 960039
+    },
+    {
+      "id": "instance_040",
+      "n": 96,
+      "seed": 960040
+    },
+    {
+      "id": "instance_041",
+      "n": 96,
+      "seed": 960041
+    },
+    {
+      "id": "instance_042",
+      "n": 96,
+      "seed": 960042
+    },
+    {
+      "id": "instance_043",
+      "n": 96,
+      "seed": 960043
+    },
+    {
+      "id": "instance_044",
+      "n": 96,
+      "seed": 960044
+    },
+    {
+      "id": "instance_045",
+      "n": 96,
+      "seed": 960045
+    },
+    {
+      "id": "instance_046",
+      "n": 96,
+      "seed": 960046
+    },
+    {
+      "id": "instance_047",
+      "n": 96,
+      "seed": 960047
+    },
+    {
+      "id": "instance_048",
+      "n": 96,
+      "seed": 960048
+    },
+    {
+      "id": "instance_049",
+      "n": 96,
+      "seed": 960049
+    },
+    {
+      "id": "instance_050",
+      "n": 96,
+      "seed": 960050
+    },
+    {
+      "id": "instance_001",
+      "n": 128,
+      "seed": 1280001
+    },
+    {
+      "id": "instance_002",
+      "n": 128,
+      "seed": 1280002
+    },
+    {
+      "id": "instance_003",
+      "n": 128,
+      "seed": 1280003
+    },
+    {
+      "id": "instance_004",
+      "n": 128,
+      "seed": 1280004
+    },
+    {
+      "id": "instance_005",
+      "n": 128,
+      "seed": 1280005
+    },
+    {
+      "id": "instance_006",
+      "n": 128,
+      "seed": 1280006
+    },
+    {
+      "id": "instance_007",
+      "n": 128,
+      "seed": 1280007
+    },
+    {
+      "id": "instance_008",
+      "n": 128,
+      "seed": 1280008
+    },
+    {
+      "id": "instance_009",
+      "n": 128,
+      "seed": 1280009
+    },
+    {
+      "id": "instance_010",
+      "n": 128,
+      "seed": 1280010
+    },
+    {
+      "id": "instance_011",
+      "n": 128,
+      "seed": 1280011
+    },
+    {
+      "id": "instance_012",
+      "n": 128,
+      "seed": 1280012
+    },
+    {
+      "id": "instance_013",
+      "n": 128,
+      "seed": 1280013
+    },
+    {
+      "id": "instance_014",
+      "n": 128,
+      "seed": 1280014
+    },
+    {
+      "id": "instance_015",
+      "n": 128,
+      "seed": 1280015
+    },
+    {
+      "id": "instance_016",
+      "n": 128,
+      "seed": 1280016
+    },
+    {
+      "id": "instance_017",
+      "n": 128,
+      "seed": 1280017
+    },
+    {
+      "id": "instance_018",
+      "n": 128,
+      "seed": 1280018
+    },
+    {
+      "id": "instance_019",
+      "n": 128,
+      "seed": 1280019
+    },
+    {
+      "id": "instance_020",
+      "n": 128,
+      "seed": 1280020
+    },
+    {
+      "id": "instance_021",
+      "n": 128,
+      "seed": 1280021
+    },
+    {
+      "id": "instance_022",
+      "n": 128,
+      "seed": 1280022
+    },
+    {
+      "id": "instance_023",
+      "n": 128,
+      "seed": 1280023
+    },
+    {
+      "id": "instance_024",
+      "n": 128,
+      "seed": 1280024
+    },
+    {
+      "id": "instance_025",
+      "n": 128,
+      "seed": 1280025
+    },
+    {
+      "id": "instance_026",
+      "n": 128,
+      "seed": 1280026
+    },
+    {
+      "id": "instance_027",
+      "n": 128,
+      "seed": 1280027
+    },
+    {
+      "id": "instance_028",
+      "n": 128,
+      "seed": 1280028
+    },
+    {
+      "id": "instance_029",
+      "n": 128,
+      "seed": 1280029
+    },
+    {
+      "id": "instance_030",
+      "n": 128,
+      "seed": 1280030
+    },
+    {
+      "id": "instance_031",
+      "n": 128,
+      "seed": 1280031
+    },
+    {
+      "id": "instance_032",
+      "n": 128,
+      "seed": 1280032
+    },
+    {
+      "id": "instance_033",
+      "n": 128,
+      "seed": 1280033
+    },
+    {
+      "id": "instance_034",
+      "n": 128,
+      "seed": 1280034
+    },
+    {
+      "id": "instance_035",
+      "n": 128,
+      "seed": 1280035
+    },
+    {
+      "id": "instance_036",
+      "n": 128,
+      "seed": 1280036
+    },
+    {
+      "id": "instance_037",
+      "n": 128,
+      "seed": 1280037
+    },
+    {
+      "id": "instance_038",
+      "n": 128,
+      "seed": 1280038
+    },
+    {
+      "id": "instance_039",
+      "n": 128,
+      "seed": 1280039
+    },
+    {
+      "id": "instance_040",
+      "n": 128,
+      "seed": 1280040
+    },
+    {
+      "id": "instance_041",
+      "n": 128,
+      "seed": 1280041
+    },
+    {
+      "id": "instance_042",
+      "n": 128,
+      "seed": 1280042
+    },
+    {
+      "id": "instance_043",
+      "n": 128,
+      "seed": 1280043
+    },
+    {
+      "id": "instance_044",
+      "n": 128,
+      "seed": 1280044
+    },
+    {
+      "id": "instance_045",
+      "n": 128,
+      "seed": 1280045
+    },
+    {
+      "id": "instance_046",
+      "n": 128,
+      "seed": 1280046
+    },
+    {
+      "id": "instance_047",
+      "n": 128,
+      "seed": 1280047
+    },
+    {
+      "id": "instance_048",
+      "n": 128,
+      "seed": 1280048
+    },
+    {
+      "id": "instance_049",
+      "n": 128,
+      "seed": 1280049
+    },
+    {
+      "id": "instance_050",
+      "n": 128,
+      "seed": 1280050
+    }
+  ]
+}
+

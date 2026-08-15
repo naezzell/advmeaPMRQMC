@@ -15,6 +15,7 @@
 #include<stdio.h>
 #include<string.h>
 #include<math.h>
+#include<limits>
 
 double* invPowersOf2 {NULL};
 const int maxexp = 100000;
@@ -156,6 +157,12 @@ public:
 	double get_double() const { return ldexp(mantissa,exponent);}
 	int sgn(){ return (mantissa > 0.0) - (mantissa < 0.0);}
 	ExExFloat abs(){ExExFloat res; res.mantissa = fabs(mantissa); res.exponent = exponent; return res;}
+	// Return log(|x|) without converting the extended-exponent value to double.
+	// In particular, zero is represented exactly and does not produce a NaN.
+	double log_abs() const{
+		if(mantissa == 0.0) return -std::numeric_limits<double>::infinity();
+		return std::log(std::fabs(mantissa)) + static_cast<double>(exponent) * std::log(2.0);
+	}
 	ExExFloat SqRt(){ ExExFloat res;
 		if(exponent%2 == 0){ res.mantissa = sqrt(mantissa); res.exponent = exponent/2;} 
 		else{ res.mantissa = sqrt(2*mantissa); res.exponent = (exponent-1)/2;}

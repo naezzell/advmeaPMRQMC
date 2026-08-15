@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "protocol_id": "Z2-SMOKE-20260809",
+  "source_commit": "commit containing this artifact",
+  "model": "two-spin standard TFIM, H=-Z1Z2-0.7(X1+X2)",
+  "move_probability": 0.1,
+  "rng_seed_offset": 7300,
+  "thermalization_updates": 100,
+  "sampling_updates": 2000,
+  "correctness": {
+    "rule": "absolute error <= max(0.03, 6*reported_SE)",
+    "fixed_beta_3": {"exact": 0.7294660307370525, "mean": 0.784906, "se": 0.069414, "passed": true},
+    "pt_passed_at_all_betas": true
+  },
+  "fixed_global_z2_moves": 211,
+  "pt_global_z2_moves": 854,
+  "swap_acceptance": [0.754, 0.646, 0.440],
+  "round_trips": 126,
+  "raw_archive": {
+    "path": "/tmp/pmr_global_z2_smoke",
+    "retention": "ephemeral smoke artifact; regenerate with command",
+    "report_sha256": "7b55272352a5b1d5c3d8d184f30539fa16862cedf49ac38524def783cf81aa06"
+  },
+  "command": "python3 experiments/validate_pt_minimal.py --Tsteps 100 --steps 2000 --steps-per-measurement 10 --updates-per-exchange 2 --oversubscribe /tmp/pmr_global_z2_smoke"
+}

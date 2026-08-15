@@ -1,0 +1,40 @@
+{
+  "campaign": "historical_tfim_anchors",
+  "methods": ["current_fixed"],
+  "seeds": [1000, 2000, 3000, 4000],
+  "simulation": {
+    "Tsteps": 100000,
+    "steps": 1000000,
+    "steps_per_measurement": 100,
+    "qmax": 2048,
+    "nbins": 100,
+    "max_wall_seconds": 7200
+  },
+  "matrices": [
+    {
+      "L": 3,
+      "lambda": 0.5,
+      "beta": 1.0,
+      "periodic": false,
+      "representation": "standard",
+      "protocols": ["all"]
+    },
+    {
+      "L": 4,
+      "lambda": 1.0,
+      "beta": [0.1, 0.5, 1.0, 2.0, 3.0, 4.0],
+      "periodic": true,
+      "representation": "rotated_parity",
+      "parity": 1,
+      "protocols": ["all"]
+    },
+    {
+      "L": 8,
+      "lambda": [0.1, 0.5, 1.0, 1.5],
+      "beta": 1.0,
+      "periodic": false,
+      "representation": "standard",
+      "protocols": ["all"]
+    }
+  ]
+}

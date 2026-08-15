@@ -1,0 +1,87 @@
+{
+  "all_within_three_combined_se": true,
+  "archive_csv": "data_plotting_misc/data/advmeas_8by8tfim_data.csv",
+  "archive_csv_sha256": "f24cb3f5e43fbdac99d3cee416441cb69f92c762dd4ad89b18dfa3a89e00cb48",
+  "archive_profile": "three_by_three",
+  "campaign_summary": "benchmarking_tests/artifacts/historical_anchors_v4/summary.json",
+  "campaign_summary_sha256": "1321ae32fa9497dd5100ae2527ad0f023579b145ad634ff6a85e1ceee74baeec",
+  "comparisons": {
+    "energy": {
+      "archived": {
+        "mean": -120.318682,
+        "standard_error": 0.0078288398
+      },
+      "combined_standard_error": 0.08657085335380252,
+      "current": {
+        "cochran_q": 0.0,
+        "mean": -120.37081553712703,
+        "runs": 1,
+        "standard_error": 0.08621613490403938
+      },
+      "difference": -0.052133537127033946,
+      "within_three_combined_se": true,
+      "z_score": -0.6022065753928951
+    },
+    "offdiagonal_energy_susceptibility": {
+      "archived": {
+        "mean": 19.7538826,
+        "standard_error": 0.990028493
+      },
+      "combined_standard_error": 3.861069805027196,
+      "current": {
+        "cochran_q": 0.0,
+        "mean": 22.272085797244983,
+        "runs": 1,
+        "standard_error": 3.7319838721973193
+      },
+      "difference": 2.5182031972449828,
+      "within_three_combined_se": true,
+      "z_score": 0.6522034887756311
+    },
+    "offdiagonal_fidelity_susceptibility": {
+      "archived": {
+        "mean": 1.50492627,
+        "standard_error": 0.150446687
+      },
+      "combined_standard_error": 0.5828035191082698,
+      "current": {
+        "cochran_q": 0.0,
+        "mean": 1.9048326650139202,
+        "runs": 1,
+        "standard_error": 0.5630503851838726
+      },
+      "difference": 0.39990639501392033,
+      "within_three_combined_se": true,
+      "z_score": 0.6861770423517778
+    },
+    "specific_heat": {
+      "archived": {
+        "mean": 7.01721484,
+        "standard_error": 0.0567300774
+      },
+      "combined_standard_error": 0.6340265454887969,
+      "current": {
+        "cochran_q": 0.0,
+        "mean": 7.6572994618672965,
+        "runs": 1,
+        "standard_error": 0.6314834587719994
+      },
+      "difference": 0.6400846218672962,
+      "within_three_combined_se": true,
+      "z_score": 1.0095549254547835
+    }
+  },
+  "coordinate": {
+    "L": 8,
+    "beta": 1.0,
+    "lambda": 1.0
+  },
+  "limitations": [
+    "Current estimates are inverse-variance combinations of independently jackknifed runs.",
+    "The archived simulation also measured custom A/B observables, so raw compute costs are not matched."
+  ],
+  "run_ids": [
+    "88c1dd756cadef1c"
+  ],
+  "schema_version": 1
+}
