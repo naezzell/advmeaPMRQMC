@@ -59,3 +59,5 @@ data_and_plotting/plot_scripts/figures/*
 
 # old analysis ideas
 *old_analysis_ideas*
+
+compile_commands.json
