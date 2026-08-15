@@ -561,6 +561,18 @@ int main(int argc, char** argv){
 		MPI_Reduce(&meanq,&total_meanq,1,MPI_DOUBLE,MPI_SUM,0,MPI_COMM_WORLD);
 		MPI_Reduce(&maxq,&total_maxq,1,MPI_DOUBLE,MPI_MAX,0,MPI_COMM_WORLD);
 		MPI_Reduce(&qmax_achieved,&any_qmax_achieved,1,MPI_INT,MPI_MAX,0,MPI_COMM_WORLD);
+		double rank_elapsed_seconds = MPI_Wtime()-start_time;
+		std::vector<double> all_rank_elapsed, all_rank_weight;
+		std::vector<int> all_rank_ladder, all_rank_temperature, all_rank_qmax;
+		if(mpi_rank==0){
+			all_rank_elapsed.resize(mpi_size); all_rank_weight.resize(mpi_size);
+			all_rank_ladder.resize(mpi_size); all_rank_temperature.resize(mpi_size); all_rank_qmax.resize(mpi_size);
+		}
+		MPI_Gather(&rank_elapsed_seconds,1,MPI_DOUBLE,mpi_rank==0?all_rank_elapsed.data():NULL,1,MPI_DOUBLE,0,MPI_COMM_WORLD);
+		MPI_Gather(&crossed_weight_seconds,1,MPI_DOUBLE,mpi_rank==0?all_rank_weight.data():NULL,1,MPI_DOUBLE,0,MPI_COMM_WORLD);
+		MPI_Gather(&ladder,1,MPI_INT,mpi_rank==0?all_rank_ladder.data():NULL,1,MPI_INT,0,MPI_COMM_WORLD);
+		MPI_Gather(&temperature,1,MPI_INT,mpi_rank==0?all_rank_temperature.data():NULL,1,MPI_INT,0,MPI_COMM_WORLD);
+		MPI_Gather(&qmax_achieved,1,MPI_INT,mpi_rank==0?all_rank_qmax.data():NULL,1,MPI_INT,0,MPI_COMM_WORLD);
 		if(mpi_rank==0){
 			std::vector<double> temperature_summaries(static_cast<size_t>(ntemperatures)*summary.size(),0.0);
 			for(int t=0;t<ntemperatures;t++) std::copy(all_summaries.begin()+static_cast<size_t>(t)*summary.size(),all_summaries.begin()+(static_cast<size_t>(t)+1)*summary.size(),temperature_summaries.begin()+static_cast<size_t>(t)*summary.size());
@@ -573,6 +585,12 @@ int main(int argc, char** argv){
 				flow_file << tr << ',' << t << ',' << total_flow[static_cast<size_t>(tr)*ntemperatures+t] << ','
 					<< total_endpoint_visits << ',' << total_round_trips << ',' << total_meanq/(mpi_size*measurements) << ','
 					<< total_maxq << ',' << any_qmax_achieved << ',' << total_crossed_weight_seconds << '\n';
+			std::ofstream rank_timing((options.output_prefix+"_rank_timing.csv").c_str());
+			rank_timing << "rank,ladder,slot,elapsed_seconds,exchange_weight_seconds,qmax_achieved\n";
+			for(int rank=0;rank<mpi_size;rank++)
+				rank_timing << rank << ',' << all_rank_ladder[rank] << ',' << all_rank_temperature[rank] << ','
+					<< std::setprecision(17) << all_rank_elapsed[rank] << ',' << all_rank_weight[rank] << ','
+					<< all_rank_qmax[rank] << '\n';
 			if(any_qmax_achieved)
 				std::cerr << "Warning: qmax = " << qmax << " was reached by at least one PT rank; increase qmax.\n";
 			std::cout << "Parallel tempering completed: " << ntemperatures << " temperatures, " << layout.independent_ladders << " independent ladder(s)\n";
