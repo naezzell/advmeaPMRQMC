@@ -841,14 +841,14 @@ double measure_H2(){
 }
 
 double measure_Hdiag(){
-	/** 
+	/**
 	* Estimates <Hdiag>
-	* 
+	*
 	* See Eq. 24 in [arXiv:2307.06503]
 	*/
-	// return currEnergy;
+	return currEnergy;
 	// return lattice.to_ullong();
-	return calculate_Oi(lattice);
+	// return calculate_Oi(lattice);
 }
 
 double measure_Hdiag2(){
@@ -1072,9 +1072,10 @@ static double measure_Hdiag_kint(size_t k) {
     std::vector<double> Oi(q+1);
     auto lattice_backup = lattice;
     for (decltype(q) ii = 0; ii < q+1; ++ii) {
-      Ei[ii] = (d->z[ii] / -beta);
+      Ei[ii] = (d->z[ii] / -run_beta);
       // Oi[ii] = lattice.to_ullong();
-      Oi[ii] = calculate_Oi(lattice);
+      // Oi[ii] = calculate_Oi(lattice);
+      Oi[ii] = Ei[ii];
 
       if (ii < q) {
       	ApplyOperator(Sq[ii]);
@@ -1088,7 +1089,7 @@ static double measure_Hdiag_kint(size_t k) {
     }
 
 
-    ret = Mk<specgap_config.KMAX>(Ei, Oi, dd_beta, beta_pow_fac, beta_div2_pow_fac, beta);
+    ret = Mk<specgap_config.KMAX>(Ei, Oi, dd_beta, beta_pow_fac, beta_div2_pow_fac, run_beta);
   }
   return ret[k];
 }
