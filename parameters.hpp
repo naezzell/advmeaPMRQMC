@@ -26,6 +26,9 @@
 #define stepsPerMeasurement 10 // number of Monte-Carlo updates per measurement
 #define beta 0.1 // inverse temperature
 #define tau 0.05 //imaginary propogation time
+#ifndef gamma
+#define gamma 1.0 // coefficient multiplying H_gamma for split Hamiltonians
+#endif
 #define parity_cond 0 // controls parity subspace measurement 
 
 //
