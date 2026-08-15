@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "analysis_commit": "commit containing this artifact",
+  "simulation_source_commit": "6e030fb047ae2664bd77dec81bb71711f2cea550",
+  "protocol": "3x3 OBC standard TFIM, Gamma=0.5, beta=1, all observables, four independent seed groups of four MPI chains, Tsteps=100000, steps=1000000, measurement interval=100",
+  "exact_reference": {
+    "energy_density": -1.3192174879166378,
+    "specific_heat_density": 0.30085196725094776
+  },
+  "inverse_variance_summary": {
+    "energy_density": {"mean": -1.3188065765926993, "standard_error": 0.0006321509833507679, "cochran_q": 4.763511519324087},
+    "specific_heat_density": {"mean": 0.30245445489388895, "standard_error": 0.0031179231748574457, "cochran_q": 3.9930250073631495},
+    "energy_susceptibility_density": {"mean": 0.10365782529426476, "standard_error": 0.004075252415957744},
+    "fidelity_susceptibility_density": {"mean": 0.009232234355962125, "standard_error": 0.0005583137900305791},
+    "effective_gap": {"mean": 5.605822213485827, "standard_error": 0.1204395337989978}
+  },
+  "runs": [
+    {"run_id": "03a568f16f6da728", "seed": 1000, "rhat": 1.0000962733544778, "drift_pass": false, "ess": 25360.487963585896, "core_hours": 0.0035360023333345855, "exact_pass": true},
+    {"run_id": "356e83aa7b480102", "seed": 2000, "rhat": 1.000299272619293, "drift_pass": true, "ess": 24314.670087678358, "core_hours": 0.003554334999999911, "exact_pass": true},
+    {"run_id": "41117f9436c4b660", "seed": 3000, "rhat": 1.0001254423838912, "drift_pass": true, "ess": 24601.994328998226, "core_hours": 0.003450932222222036, "exact_pass": true},
+    {"run_id": "24ee3feebb20a41d", "seed": 4000, "rhat": 1.0, "drift_pass": true, "ess": 24737.246964777307, "core_hours": 0.0032795776666676426, "exact_pass": true}
+  ],
+  "precision": {
+    "energy_density": "passed 0.1% in every run",
+    "specific_heat_density": "passed 5% in every run",
+    "effective_gap": "passed 10% in every run",
+    "energy_susceptibility_density": "failed 5% in every run",
+    "fidelity_susceptibility_density": "failed 5% in every run"
+  },
+  "archive": {
+    "path": "benchmarking_tests/artifacts/historical_anchors",
+    "trace_schema_version": 2,
+    "total_stream_trace_bytes": 40207636,
+    "manifest_sha256_by_run": {
+      "03a568f16f6da728": "f1850bf08d3815d3c53d2e73dc8438622b2c201ec51fcd1e54e1fe510d42ab0c",
+      "356e83aa7b480102": "ea9018195e8dcc67a1eab1d97982464085a25f8e5d1f403d36d6ee04ebed5da9",
+      "41117f9436c4b660": "680991d71c920387e63ccb6abfebae2b15bbfb4dd86e336bc29ab50509401053",
+      "24ee3feebb20a41d": "f0a01f13844bca684862e570cebe45f688406ca20d2411ff0482aeb50183879b"
+    },
+    "ordered_trace_checksum_manifest_sha256": "5a5ee51dfb2716abf0ac88faf9a3df5fcf201cadef14d9aa1b1523840238c71e"
+  }
+}

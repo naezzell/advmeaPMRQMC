@@ -27,6 +27,8 @@ std::ofstream timeseries_file;
 bool timeseries_enabled = false;
 BetaAnnealPlan fixed_anneal_plan;
 double fixed_target_beta = run_beta, fixed_target_tau = run_tau;
+std::ofstream stream_timeseries_file;
+bool stream_timeseries_enabled = false;
 
 static void write_timeseries_header(){
 	if(mpi_rank != 0) return;
@@ -47,13 +49,40 @@ static void write_timeseries_row(unsigned long long measurement, unsigned long l
 	timeseries_file << ',' << elapsed_seconds << '\n';
 }
 
+static std::string stream_timeseries_name(const std::string& prefix, int rank){
+	return prefix + ".rank" + std::to_string(rank) + ".csv";
+}
+
+static bool file_has_content(const std::string& path){
+	std::ifstream input(path.c_str(),std::ios::binary|std::ios::ate);
+	return input.good() && input.tellg() > 0;
+}
+
+static void write_stream_timeseries_header(){
+	stream_timeseries_file << "stream,rank,measurement,updates,beta,tau,global_z2_moves,measurement_seconds,expansion_order,sign";
+	for(int k=0;k<N_all_observables;k++)
+		stream_timeseries_file << ",obs_" << k << ",signed_obs_" << k;
+	stream_timeseries_file << ",elapsed_seconds\n";
+}
+
+static void write_stream_timeseries_row(unsigned long long measurement, unsigned long long updates,
+		double elapsed_seconds){
+	stream_timeseries_file << mpi_rank << ',' << mpi_rank << ',' << measurement << ',' << updates
+		<< ',' << std::setprecision(17) << run_beta << ',' << run_tau << ',' << global_z2_moves << ',' << measurement_seconds
+		<< ',' << q << ',' << last_measurement_sgn;
+	for(int k=0;k<N_all_observables;k++)
+		stream_timeseries_file << ',' << last_measurement[k] << ',' << last_measurement[k]*last_measurement_sgn;
+	stream_timeseries_file << ',' << elapsed_seconds << '\n';
+}
+
 void signalHandler(int signum){	if(save_data_flag==0) save_data_flag = 1; }
 
 void compute(){
 	if(!resume_calc) std::cout << "Starting calculation for MPI process No. " << mpi_rank << ", RNG seed = " << rng_seed << std::endl; fflush(stdout);
 	if(TstepsFinished){
 		if(step>0 && step<stepsPerMeasurement && measurement_step<measurements){
-			for(;step<stepsPerMeasurement;step++) update(); measure(); measurement_step++;
+			for(;step<stepsPerMeasurement;step++) update();
+			double measurement_start = MPI_Wtime(); measure(); measurement_seconds += MPI_Wtime()-measurement_start; measurement_step++;
 		}
 	} else{
 		if(fixed_anneal_plan.enabled){
@@ -69,7 +98,12 @@ void compute(){
 		TstepsFinished = 1;
 	}
 	for(;measurement_step<measurements;measurement_step++){
-		for(step=0;step<stepsPerMeasurement;step++) update(); measure();
+		for(step=0;step<stepsPerMeasurement;step++) update();
+		double measurement_start = MPI_Wtime(); measure(); measurement_seconds += MPI_Wtime()-measurement_start;
+		if(stream_timeseries_enabled)
+			write_stream_timeseries_row(measurement_step+1,
+				static_cast<unsigned long long>(Tsteps) + (measurement_step+1)*stepsPerMeasurement,
+				MPI_Wtime()-start_time);
 		if(timeseries_enabled){
 			double local_signed[N_all_observables], summed[N_all_observables];
 			double summed_signed[N_all_observables], summed_sign;
@@ -141,6 +175,8 @@ void printout_single_run(){
 	for(i=0;i<Ncycles;i++) if(!cycles_used[i]) std::cout << "Warning: cycle No. " << i << " of length " << cycle_len[i] << " was not used" << std::endl;
 	std::cout << "mean(q) = " << meanq << std::endl;
 	std::cout << "max(q) = "<< maxq << std::endl;
+	std::cout << "global Z2 moves = " << global_z2_moves << std::endl;
+	std::cout << "measurement wall time = " << measurement_seconds << " seconds" << std::endl;
 	for(k=0;k<N_all_observables;k++) if(valid_observable[k]){
 		std::cout << "Observable #" << ++o << ": "<< name_of_observable(k) << std::endl;
 		std::cout << "mean(O) = " << mean_O[k] << std::endl;
@@ -169,11 +205,12 @@ int main(int argc, char* argv[]){
 	MPI_Init(&argc,&argv);
 	MPI_Comm_rank(MPI_COMM_WORLD,&mpi_rank);
 	MPI_Comm_size(MPI_COMM_WORLD,&mpi_size);
-	std::string timeseries_prefix;
+	std::string timeseries_prefix, stream_timeseries_prefix;
 	BetaAnnealOptions anneal_options;
 	bool target_beta_set=false, target_tau_set=false;
 	for(int arg=1;arg<argc;arg++){
 		if(std::string(argv[arg]) == "--timeseries-prefix" && arg+1<argc) timeseries_prefix = argv[++arg];
+		else if(std::string(argv[arg]) == "--stream-timeseries-prefix" && arg+1<argc) stream_timeseries_prefix = argv[++arg];
 		else if(std::string(argv[arg]) == "--target-beta" && arg+1<argc){ fixed_target_beta=std::atof(argv[++arg]); target_beta_set=true; }
 		else if(std::string(argv[arg]) == "--target-tau" && arg+1<argc){ fixed_target_tau=std::atof(argv[++arg]); target_tau_set=true; }
 		else if(std::string(argv[arg]) == "--beta-anneal") anneal_options.automatic=true;
@@ -219,10 +256,19 @@ int main(int argc, char* argv[]){
 	if(!timeseries_prefix.empty()){
 		timeseries_enabled = true;
 		if(mpi_rank==0){
-			timeseries_file.open(timeseries_prefix.c_str());
+			bool append = resume_calc && file_has_content(timeseries_prefix);
+			timeseries_file.open(timeseries_prefix.c_str(),append ? std::ios::app : std::ios::out);
 			if(!timeseries_file){ std::cerr << "Cannot open timeseries output: " << timeseries_prefix << std::endl; MPI_Abort(MPI_COMM_WORLD,2); }
-			write_timeseries_header();
+			if(!append) write_timeseries_header();
 		}
+	}
+	if(!stream_timeseries_prefix.empty()){
+		stream_timeseries_enabled = true;
+		std::string name = stream_timeseries_name(stream_timeseries_prefix,mpi_rank);
+		bool append = resume_calc && file_has_content(name);
+		stream_timeseries_file.open(name.c_str(),append ? std::ios::app : std::ios::out);
+		if(!stream_timeseries_file){ std::cerr << "Cannot open stream timeseries output: " << name << std::endl; MPI_Abort(MPI_COMM_WORLD,2); }
+		if(!append) write_stream_timeseries_header();
 	}
 	MPI_Barrier(MPI_COMM_WORLD);
 	compute(); process_single_run();
@@ -279,6 +325,7 @@ int main(int argc, char* argv[]){
 	}
 	if(mpi_rank == 0) std::cout << "Collecting statistics and finalizing the calculation" << std::endl << std::endl;
 	if(mpi_rank==0 && timeseries_enabled) timeseries_file.close();
+	if(stream_timeseries_enabled) stream_timeseries_file.close();
 	double Rsum[N_all_observables] = {0}; sgn_mean = 0; o = 0;
 	double over_bins_sum[N_all_observables] = {0}; sgn_variance = 0;
 	double over_bins_sum_cov[N_all_observables] = {0};

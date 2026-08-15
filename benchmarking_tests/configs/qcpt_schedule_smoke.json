@@ -1,0 +1,33 @@
+{
+  "campaign": "qcpt_schedule_smoke",
+  "methods": ["qcpt"],
+  "seeds": [1100, 2100, 3100, 4100],
+  "production_seeds": [5100, 6100, 7100, 8100],
+  "schedule_selection_metric": "objective",
+  "sweep_objective": {
+    "lambda": [0.0, 1.0],
+    "beta_over_L": [0.125, 0.25, 0.5, 1.0],
+    "match_tolerance": 1e-9
+  },
+  "simulation": {
+    "Tsteps": 5000,
+    "steps": 50000,
+    "steps_per_measurement": 10,
+    "qmax": 512,
+    "nbins": 50,
+    "max_wall_seconds": 600
+  },
+  "matrices": [
+    {
+      "L": [2],
+      "lambda": [1.0],
+      "beta": [2.0],
+      "periodic": true,
+      "representation": "standard",
+      "methods": ["qcpt"],
+      "schedules": ["pure_beta", "diagonal_p0_5", "diagonal_p1", "diagonal_p2", "classical_dogleg"],
+      "protocols": ["cheap"],
+      "tuning": true
+    }
+  ]
+}

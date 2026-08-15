@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "analysis_commit": "commit containing this artifact",
+  "campaign": "model_move_controls_v2",
+  "runs": 12,
+  "stream_trace_bytes": 276615221,
+  "hardware": "Intel(R) Core(TM) i5-6600K CPU @ 3.50GHz, four cores, WSL2",
+  "protocol": "Run the unchanged campaign analyzer once after changing the analyzer fingerprint, then repeat with all per-run fingerprints populated. The cached pass still SHA-256 hashes every manifest, simulator summary, trace, and analyzer input.",
+  "uncached_wall_seconds": 263.04,
+  "cached_wall_seconds": 1.06,
+  "observed_ratio": 248.1509433962264,
+  "verification_repeat_wall_seconds": 0.90,
+  "summary_sha256_before_repeat": "cdef59e91fc3be5a178fb462d8a1ad055cdb66e706504269b2ece29c302f0371",
+  "summary_sha256_after_repeat": "cdef59e91fc3be5a178fb462d8a1ad055cdb66e706504269b2ece29c302f0371",
+  "formal_speedup_claim_pass": false,
+  "limitation": "Only one full uncached timing was collected; this is an observed workflow ratio, not a bootstrap-qualified speedup claim."
+}

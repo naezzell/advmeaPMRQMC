@@ -1,0 +1,28 @@
+{
+  "schema_version": 2,
+  "analysis_commit": "commit containing this artifact",
+  "rhat_definition": "maximum split rank-normalized R-hat over raw signed energy numerator, raw signed driving-term numerator, and sign",
+  "supersedes": {
+    "analysis_commit": "04f05e0",
+    "reason": "The former diagnostic ranked chain-wise centered discrete ratio linearizations, so identical energy mass points received different pooled ranks across chains.",
+    "former_rhat_by_run": {
+      "aee1cea9a2fae828": 1.0273753974143471,
+      "9d3f3c6f3c092919": 1.0469881785392874,
+      "a40a5b4376d6c288": 1.0320254393503994,
+      "b163f97dd43e5b40": 1.05106632663855
+    }
+  },
+  "model": "2x2 OBC standard TFIM, Gamma=1, beta=0.5",
+  "exact": {"energy_density": -0.8630147352799794, "specific_heat_density": 0.2998344923015842},
+  "runs": [
+    {"run_id": "aee1cea9a2fae828", "Tsteps": 100, "steps": 1000, "rhat": 1.014992178629043, "thermalization_pass": false, "correlation_pass": false, "ess": 205.3211122923586, "energy_density": -0.7431123173357573, "energy_density_se": 0.035538683374857535, "specific_heat_density": 0.29009136323059637, "specific_heat_density_se": 0.02826192904374581, "passed": false},
+    {"run_id": "9d3f3c6f3c092919", "Tsteps": 200, "steps": 2000, "rhat": 1.0070330893464117, "thermalization_pass": true, "correlation_pass": false, "ess": 444.15495967954973, "energy_density": -0.8084740544926826, "energy_density_se": 0.03203706037075527, "specific_heat_density": 0.28493839881252203, "specific_heat_density_se": 0.019864794195358738, "passed": false},
+    {"run_id": "a40a5b4376d6c288", "Tsteps": 400, "steps": 4000, "rhat": 1.00365275508223, "thermalization_pass": true, "correlation_pass": false, "ess": 690.960019111594, "energy_density": -0.8358016611857432, "energy_density_se": 0.021007290944165112, "specific_heat_density": 0.29965681462620153, "specific_heat_density_se": 0.022665649032912728, "passed": false},
+    {"run_id": "b163f97dd43e5b40", "Tsteps": 800, "steps": 8000, "rhat": 1.0012460608219484, "thermalization_pass": true, "correlation_pass": false, "ess": 1280.1977885755723, "energy_density": -0.8569660710333281, "energy_density_se": 0.019180575110091233, "specific_heat_density": 0.2941534466397332, "specific_heat_density_se": 0.015428488504765279, "passed": false}
+  ],
+  "largest_run_archive": {
+    "path": "benchmarking_tests/artifacts/desktop_smoke/runs/b163f97dd43e5b40",
+    "manifest_sha256": "87cb0ea0c3ca07f1617249b5423070dfe63ae2e737b4a1e7f4b3dd8fa5bf6b43",
+    "trace_sha256": ["8688b4ccae67e8cae9c60d934e10ca9d0d87695c9ccfb5111599c72aab7a9fe3", "d73720ab811cede0354f0dc130da6575cf5d329a319c8b3d8516b3b714e8f550", "4d156741ad55db84a8a612764371a5b2e39b7cceddcde8c5953f6c640164f853", "4f62b1f512d0dd6884492a48b0557515121fe8aa4bde0989e202b3e3b24e6e35"]
+  }
+}

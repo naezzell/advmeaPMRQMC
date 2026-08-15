@@ -134,6 +134,8 @@ int pt_stop_requested = 0;
 ExExFloat zero, currWeight; int TstepsFinished = 0;
 unsigned long long step = 0;
 unsigned long long measurement_step = 0;
+unsigned long long global_z2_moves = 0;
+double measurement_seconds = 0.0;
 
 unsigned int rng_seed;
 double meanq = 0;
@@ -165,7 +167,7 @@ void save_QMC_data(int printout = 1){
 	fout(Sq); fout(Sq_backup); fout(Sq_subseq); fout(Sq_gaps);
 	fout(Energies); fout(Energies_backup); fout(eoccupied); fout(currEnergy); fout(valid_observable);
 	fout(currD); fout(old_currD); fout(currD_partial); fout(zero); fout(currWeight); fout(step); fout(measurement_step); 
-	fout(rng_seed); fout(meanq); fout(maxq);
+	fout(rng_seed); fout(meanq); fout(maxq); fout(global_z2_moves); fout(measurement_seconds);
 #ifdef MPI_VERSION
         elapsed = MPI_Wtime() - start_time;
 #else
@@ -212,7 +214,7 @@ void load_QMC_data(){
 		fin(Sq); fin(Sq_backup); fin(Sq_subseq); fin(Sq_gaps);
 		fin(Energies); fin(Energies_backup); fin(eoccupied); fin(currEnergy); fin(valid_observable);
 		fin(currD); fin(old_currD); fin(currD_partial); fin(zero); fin(currWeight); fin(step); fin(measurement_step); 
-		fin(rng_seed); fin(meanq); fin(maxq); fin(elapsed); if(finput.gcount()==0) elapsed = 0;
+		fin(rng_seed); fin(meanq); fin(maxq); fin(global_z2_moves); fin(measurement_seconds); fin(elapsed); if(finput.gcount()==0) elapsed = 0;
 		if(dynamic_run_parameters){
 			uint64_t magic = 0, identity = 0;
 			fin(magic); fin(identity); fin(run_beta); fin(run_tau); fin(run_gamma);
@@ -609,6 +611,17 @@ void update(){
 		if(pt_mode){ pt_stop_requested = 1; return; }
 		save_QMC_data(); exit(0);
 	};
+#ifdef TFIM_GLOBAL_Z2_MOVE
+#ifndef TFIM_GLOBAL_Z2_MOVE_PROBABILITY
+#define TFIM_GLOBAL_Z2_MOVE_PROBABILITY 0.1
+#endif
+	// Complementing every Z-basis spin leaves standard-TFIM ZZ energies
+	// unchanged and commutes with every X permutation in the PMR string.
+	// The proposal therefore has exactly unit acceptance for that gated model.
+	if(val(rng) < TFIM_GLOBAL_Z2_MOVE_PROBABILITY){
+		lattice.flip(); z.flip(); global_z2_moves++; return;
+	}
+#endif
 	int i,m,p,r,u,oldq,cont; double oldE, oldE2, v = Nop>0 ? val(rng) : 1; ExExFloat newWeight; double Rfactor;
 	if(v < 0.8){ // composite update
 		Rfactor = 1; oldq = q; memcpy(Sq_backup,Sq,q*sizeof(int)); memcpy(cycles_used_backup,cycles_used,Ncycles*sizeof(int));
@@ -1034,6 +1047,13 @@ double measure_Hoffdiag_Fint(){
 	*/
 	double R = (run_beta * run_beta * measure_H2()) / 8.0;
 	R += measure_Hdiag_Fint();
+	R -= (run_beta * run_beta * (d->z[0]/(-run_beta)) * measure_H()) / 4.0;
+	return R;
+}
+
+double measure_Hoffdiag_Fint_slow(){
+	double R = (run_beta * run_beta * measure_H2()) / 8.0;
+	R += measure_Hdiag_Fint_slow();
 	R -= (run_beta * run_beta * (d->z[0]/(-run_beta)) * measure_H()) / 4.0;
 	return R;
 }
@@ -2235,7 +2255,13 @@ double measure_observable(int n){
 			case 9: R = measure_O_Fint(5); break;
 			case 10: R = measure_AB_corr(0, 5); break; 
 			case 11: R = measure_AB_Eint(0, 5); break; 
-			case 12: R = measure_AB_Fint(0, 5); break;
+			case 12:
+#ifdef USE_SLOW_FS_ESTIMATOR
+				R = measure_AB_Fint_slow(0, 5);
+#else
+				R = measure_AB_Fint(0, 5);
+#endif
+				break;
 		        case 13: R = (measure_AB_real(0, 5) + measure_AB_real(5, 0)) / 2.0; break;
 		        case 14: R = (measure_AB_imag(0, 5) - measure_AB_imag(5, 0)) / 2.0; break;
 		}
@@ -2250,10 +2276,22 @@ double measure_observable(int n){
 			case 6: R = measure_Z_magnetization(); break;
 			case 7: R = measure_Hdiag_corr(); break;
             case 8: R = measure_Hdiag_Eint(); break;
-			case 9: R = measure_Hdiag_Fint(); break;
+			case 9:
+#ifdef USE_SLOW_FS_ESTIMATOR
+				R = measure_Hdiag_Fint_slow();
+#else
+				R = measure_Hdiag_Fint();
+#endif
+				break;
 			case 10: R = measure_Hoffdiag_corr(); break; 
 			case 11: R = measure_Hoffdiag_Eint(); break;
-			case 12: R = measure_Hoffdiag_Fint(); break;
+			case 12:
+#ifdef USE_SLOW_FS_ESTIMATOR
+				R = measure_Hoffdiag_Fint_slow();
+#else
+				R = measure_Hoffdiag_Fint();
+#endif
+				break;
 			case 13: R = measure_parity(); break; 
 	}
 	return R;

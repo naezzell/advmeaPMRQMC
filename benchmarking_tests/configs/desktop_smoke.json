@@ -1,0 +1,23 @@
+{
+  "campaign": "desktop_smoke",
+  "methods": ["current_fixed"],
+  "seeds": [1000],
+  "simulation": {
+    "Tsteps": 100,
+    "steps": 1000,
+    "steps_per_measurement": 10,
+    "qmax": 128,
+    "nbins": 10,
+    "max_wall_seconds": 120
+  },
+  "matrices": [
+    {
+      "L": [2],
+      "lambda": [1.0],
+      "beta": [0.5],
+      "periodic": false,
+      "representation": "standard",
+      "protocols": ["cheap"]
+    }
+  ]
+}

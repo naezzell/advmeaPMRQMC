@@ -72,6 +72,32 @@ def exact_expectation(hamiltonian_path, observable_path, n, beta):
     }
 
 
+def exact_thermal_from_terms(terms, n, beta):
+    """Return exact energy and heat capacity for a small Pauli Hamiltonian."""
+    import numpy
+    hamiltonian = dense_pauli_matrix(n, terms, numpy)
+    energies = numpy.linalg.eigvalsh(hamiltonian).real
+    weights = numpy.exp(-beta * (energies - energies.min()))
+    normalization = numpy.sum(weights)
+    energy = float(numpy.dot(weights, energies) / normalization)
+    energy2 = float(numpy.dot(weights, energies * energies) / normalization)
+    specific_heat = beta * beta * (energy2 - energy * energy)
+    return {"beta": float(beta), "energy": energy, "energy2": energy2,
+            "specific_heat": specific_heat, "ground_energy": float(energies[0]),
+            "dimension": 1 << n}
+
+
+def exact_thermal_observables(hamiltonian_path, n, beta):
+    return exact_thermal_from_terms(read_pauli_terms(hamiltonian_path), n, beta)
+
+
+def exact_split_thermal_observables(fixed_path, gamma_path, gamma, n, beta):
+    terms = read_pauli_terms(fixed_path)
+    terms += [(gamma * coefficient, operators)
+              for coefficient, operators in read_pauli_terms(gamma_path)]
+    return exact_thermal_from_terms(terms, n, beta)
+
+
 def compute_benchmark_reference(benchmark_directory):
     root = Path(benchmark_directory)
     metadata = json.loads((root / "instance" / "instance.json").read_text())

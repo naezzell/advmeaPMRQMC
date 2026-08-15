@@ -114,6 +114,7 @@ def write_inputs(directory, thermalization, steps, measurement_interval):
 #define COMPOSITE_UPDATE_BREAK_PROBABILITY 0.9
 #define EXACTLY_REPRODUCIBLE
 #define RNG_SEED_OFFSET 7300
+#define TFIM_GLOBAL_Z2_MOVE
 """)
 
 
@@ -150,6 +151,21 @@ def trace_rows(path, temperature=None):
     if temperature is not None:
         rows = [row for row in rows if int(row["temperature"]) == temperature]
     return rows
+
+
+def validate_stream_traces(output):
+    fixed_paths = sorted(output.glob("fixed_stream.rank*.csv"))
+    pt_paths = sorted(output.glob("pt_stream.rank*.csv"))
+    if len(fixed_paths) != 1 or len(pt_paths) != len(BETAS):
+        raise RuntimeError("independent stream trace count does not match MPI layout")
+    required_fixed = {"stream", "rank", "sign", "signed_obs_0"}
+    required_pt = required_fixed | {"ladder", "temperature", "trajectory"}
+    for path, required in [(fixed_paths[0], required_fixed)] + [
+            (path, required_pt) for path in pt_paths]:
+        rows = trace_rows(path)
+        if not rows or not required.issubset(rows[0]):
+            raise RuntimeError(f"invalid independent stream schema: {path}")
+    return [path.name for path in fixed_paths + pt_paths]
 
 
 def running_trace(rows):
@@ -319,13 +335,15 @@ def validate(output, source_root, thermalization, steps, measurement_interval,
     anneal_args = (["--beta-anneal"] if beta_anneal else [])
     if beta_anneal and anneal_interval is not None:
         anneal_args += ["--anneal-interval", str(anneal_interval)]
-    run(mpi_command + ["-n", "1", "./PMRQMC_mpi.bin", "--timeseries-prefix", "fixed_trace.csv"] + anneal_args,
+    run(mpi_command + ["-n", "1", "./PMRQMC_mpi.bin", "--timeseries-prefix", "fixed_trace.csv",
+                       "--stream-timeseries-prefix", "fixed_stream"] + anneal_args,
         output, "fixed_beta.log")
     mpi_command += ["-n", str(len(BETAS)), "./PMRQMC_pt_mpi.bin",
                     "--schedule", "tempering_schedule.txt",
                     "--updates-per-exchange", str(updates_per_exchange),
                     "--independent-ladders", "1", "--output-prefix", "pt",
-                    "--timeseries-prefix", "pt_trace.csv"] + anneal_args
+                    "--timeseries-prefix", "pt_trace.csv",
+                    "--stream-timeseries-prefix", "pt_stream"] + anneal_args
     run(mpi_command, output, "pt.log")
 
     fixed_mean, fixed_error = fixed_result(output / "fixed_beta.log")
@@ -347,6 +365,7 @@ def validate(output, source_root, thermalization, steps, measurement_interval,
         swaps = [float(row["acceptance"]) for row in csv.DictReader(input_file)]
     with (output / "pt_flow.csv").open(newline="") as input_file:
         flow = list(csv.DictReader(input_file))
+    stream_trace_files = validate_stream_traces(output)
     round_trips = int(flow[0]["round_trips"]) if flow else 0
     passed = all(item["passed"] for item in comparisons) and round_trips > 0
     report = {
@@ -360,6 +379,7 @@ def validate(output, source_root, thermalization, steps, measurement_interval,
         "updates_per_exchange": updates_per_exchange,
         "acceptance": swaps,
         "round_trips": round_trips,
+        "stream_trace_files": stream_trace_files,
         "comparisons": comparisons,
         "convergence_files": {
             "data": "convergence.csv",

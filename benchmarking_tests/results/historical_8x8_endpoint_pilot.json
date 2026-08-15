@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "simulation_source_commit": "3487875e2ab03431e6bf91f98bcf5ba25ef250d3",
+  "analysis_commit": "commit containing this artifact",
+  "protocol": "8x8 OBC standard TFIM, beta=1, all standard observables, one seed group of four MPI chains, Tsteps=100000, steps=1000000, measurement interval=100",
+  "runs": [
+    {
+      "run_id": "3f8eb4f7d9e79f32",
+      "lambda": 0.1,
+      "wall_seconds": 4.006497500002297,
+      "mean_q": 0.19,
+      "max_q": 6,
+      "energy_ess": 6196.9847783180785,
+      "energy_iat": 6.231789516257767,
+      "ess_per_core_hour": 1392060.3470944567,
+      "rhat": 1.000442269317853,
+      "thermalization_pass": false,
+      "correlation_pass": true,
+      "manifest_sha256": "fe61c441e47825ebb15ff2f3a67c7a9244f6407016762b62131b16f58d17d382",
+      "stream_trace_bytes": 7725729,
+      "ordered_trace_checksum_manifest_sha256": "19e5add9402b6d6ef2a3c507d21ee158734c396e8d4823fe5d604bf77ec202e5"
+    },
+    {
+      "run_id": "bb217af4b694b0eb",
+      "lambda": 1.5,
+      "wall_seconds": 202.15324839999812,
+      "mean_q": 44.92685,
+      "max_q": 78,
+      "energy_ess": 1092.6339317533138,
+      "energy_iat": 33.62012333331553,
+      "ess_per_core_hour": 4864.480518424316,
+      "rhat": 1.0180598422889755,
+      "thermalization_pass": false,
+      "correlation_pass": false,
+      "manifest_sha256": "c11915fa39db57e31e92f32e60452bca0b3e2e31282dc2d4c23eda4620f4da31",
+      "stream_trace_bytes": 18235954,
+      "ordered_trace_checksum_manifest_sha256": "4ab25352ef0cbd26cbf8d260d74413f9ae57b8ec25a717c800950aa707d56695"
+    }
+  ],
+  "archive_comparisons": [
+    "historical_8x8_gamma0p1_archive_comparison.json",
+    "historical_8x8_gamma1p5_archive_comparison.json"
+  ],
+  "archive_path": "benchmarking_tests/artifacts/historical_anchors_v3",
+  "headline": "Across the beta=1 sweep endpoints, wall grows 50.5x and energy ESS/core-hour falls 286x as mean q grows from 0.19 to 44.9; both endpoints reproduce archived observables but neither passes every production gate."
+}

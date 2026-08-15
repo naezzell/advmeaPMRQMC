@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "simulation_source_commit": "971e767",
+  "analysis_commit": "commit containing this artifact",
+  "protocol": "4x4 PBC rotated/parity(+1) TFIM, h=1, all standard observables, one seed group of four MPI chains, Tsteps=100000, steps=1000000, measurement interval=100",
+  "runs": [
+    {
+      "run_id": "561575c5085e1fb4",
+      "beta": 0.1,
+      "wall_seconds": 3.3849198000007164,
+      "mean_q": 0.3305,
+      "max_q": 12,
+      "energy_ess": 29659.617991431787,
+      "ess_per_core_hour": 7886052.778054877,
+      "rhat": 1.0,
+      "drift_pass": true,
+      "correlation_pass": true,
+      "measurement_wall_seconds_rank0": 0.0458161,
+      "manifest_sha256": "234ed0e788751c158f9edc344bfa611a5fa6e3bcb2c9e3ff1fb70220d8f42b53",
+      "stream_trace_bytes": 9385494,
+      "ordered_trace_checksum_manifest_sha256": "1725927c797fae593b65a4f48ce1c0d9a5d3f8ff6d8b36012a393aa4a1bac0f2"
+    },
+    {
+      "run_id": "60e440b3b6219d00",
+      "beta": 1.0,
+      "wall_seconds": 34.87366479999946,
+      "mean_q": 30.45745,
+      "max_q": 56,
+      "energy_ess": 778.9663934798083,
+      "ess_per_core_hour": 20103.128195802303,
+      "rhat": 1.0062299711765956,
+      "drift_pass": true,
+      "correlation_pass": false,
+      "manifest_sha256": "d28ddc25e311c98e46127a793e09231615415d172bfb82e327049ff65be311d4",
+      "stream_trace_bytes": 14348113,
+      "ordered_trace_checksum_manifest_sha256": "b2ad911f71ddb14d82b53522feba092c47ed23bf2972e8d1b961700d9cc4e2b8"
+    },
+    {
+      "run_id": "31aeee8c9776254f",
+      "beta": 4.0,
+      "wall_seconds": 637.3761517000003,
+      "mean_q": 119.0902,
+      "max_q": 166,
+      "energy_ess": 212.78785138133418,
+      "ess_per_core_hour": 300.46475026153803,
+      "rhat": 1.008189796756631,
+      "drift_pass": true,
+      "correlation_pass": false,
+      "measurement_wall_seconds_rank0": 163.764625,
+      "manifest_sha256": "2f799fe22b9f726537eabd5d698d91d6c4e19180db62b10c9c0d0e5ee624b7a3",
+      "stream_trace_bytes": 14350370,
+      "ordered_trace_checksum_manifest_sha256": "cc14276a6903bb4b79fbe005a309a4f271839573fd1c5dc541139e61a6d7d230"
+    }
+  ],
+  "archive_comparisons": [
+    "historical_4x4_beta0p1_archive_comparison.json",
+    "historical_4x4_beta4_archive_comparison.json"
+  ],
+  "archive_path": "benchmarking_tests/artifacts/historical_anchors_v2",
+  "headline": "From beta=0.1 to beta=4, wall time grows 188x, energy ESS falls 139x, and ESS/core-hour falls 26246x for the same update count."
+}

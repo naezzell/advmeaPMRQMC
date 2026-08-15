@@ -1,0 +1,174 @@
+{
+  "bootstrap_samples": 10000,
+  "bootstrap_seed": 20260809,
+  "correctness_pass": true,
+  "measurement_speedup_95_interval": [
+    4.622404254338656,
+    5.445357289419239
+  ],
+  "measurement_speedup_claim_pass": true,
+  "median_measurement_speedup": 4.688914300834983,
+  "median_wall_speedup": 3.872823442725522,
+  "pairs": [
+    {
+      "archive_paths": [
+        "benchmarking_tests/artifacts/estimator_microbenchmark/runs/c7f8e45657933304",
+        "benchmarking_tests/artifacts/estimator_microbenchmark/runs/43f10e1bf6f061cd"
+      ],
+      "compared_columns_per_row": 34,
+      "compared_rows": 40000,
+      "correctness_pass": true,
+      "fast_manifest_sha256": "defe19fcdad1eca82109ee8044fa6ae891afd2580c3d00b94731a99c8823b238",
+      "fast_measurement_core_seconds": 10.956677599999995,
+      "fast_run_id": "c7f8e45657933304",
+      "fast_wall_seconds": 4.5037737999991805,
+      "max_abs_difference": 5.684341886080802e-14,
+      "max_q": 40.0,
+      "mean_q": 23.6992,
+      "measurement_speedup": 4.733719654213437,
+      "mismatches": 0,
+      "protocol": {
+        "L": 2,
+        "beta": 2.0,
+        "hardware": "Intel(R) Core(TM) i5-6600K CPU @ 3.50GHz",
+        "lambda": 3.044,
+        "seed": 1400,
+        "source_commit": "e95d7a7951c429a648d274120c14efc97396a4c1",
+        "steps": 10000,
+        "steps_per_measurement": 1
+      },
+      "reference_manifest_sha256": "145f94dcceca7318181734fa9d5e1a5976fada8fd580921e0d622db01840da0e",
+      "reference_measurement_core_seconds": 51.865840100000085,
+      "reference_run_id": "43f10e1bf6f061cd",
+      "reference_wall_seconds": 17.58128729999953,
+      "tolerance": 1e-10,
+      "wall_speedup": 3.903679021358206
+    },
+    {
+      "archive_paths": [
+        "benchmarking_tests/artifacts/estimator_microbenchmark/runs/42080dd0c521a17b",
+        "benchmarking_tests/artifacts/estimator_microbenchmark/runs/4ee1ee6f395a60b3"
+      ],
+      "compared_columns_per_row": 34,
+      "compared_rows": 40000,
+      "correctness_pass": true,
+      "fast_manifest_sha256": "65926e999a7af34f5d14f61ca366d9522ea455f777a8fce650255ab1bb88118f",
+      "fast_measurement_core_seconds": 11.30627659999999,
+      "fast_run_id": "42080dd0c521a17b",
+      "fast_wall_seconds": 4.70810259999962,
+      "max_abs_difference": 2.842170943040401e-14,
+      "max_q": 44.0,
+      "mean_q": 23.87905,
+      "measurement_speedup": 5.445357289419239,
+      "mismatches": 0,
+      "protocol": {
+        "L": 2,
+        "beta": 2.0,
+        "hardware": "Intel(R) Core(TM) i5-6600K CPU @ 3.50GHz",
+        "lambda": 3.044,
+        "seed": 2400,
+        "source_commit": "e95d7a7951c429a648d274120c14efc97396a4c1",
+        "steps": 10000,
+        "steps_per_measurement": 1
+      },
+      "reference_manifest_sha256": "fd47f3518a0a9bef5ac6fdb1b790eb3a79c8aa6f049077efe0d1d26f7b0abbba",
+      "reference_measurement_core_seconds": 61.56671570000012,
+      "reference_run_id": "4ee1ee6f395a60b3",
+      "reference_wall_seconds": 20.281808900001124,
+      "tolerance": 1e-10,
+      "wall_speedup": 4.307851935937582
+    },
+    {
+      "archive_paths": [
+        "benchmarking_tests/artifacts/estimator_microbenchmark/runs/19f2ff510a7cd97e",
+        "benchmarking_tests/artifacts/estimator_microbenchmark/runs/e5ec042a8d25034e"
+      ],
+      "compared_columns_per_row": 34,
+      "compared_rows": 40000,
+      "correctness_pass": true,
+      "fast_manifest_sha256": "70bea36cb84d50594c97f271b73c14cf044efda1b24f93167219ff5221735b11",
+      "fast_measurement_core_seconds": 10.687878699999976,
+      "fast_run_id": "19f2ff510a7cd97e",
+      "fast_wall_seconds": 4.511943700001211,
+      "max_abs_difference": 5.684341886080802e-14,
+      "max_q": 40.0,
+      "mean_q": 23.07195,
+      "measurement_speedup": 4.644108947456529,
+      "mismatches": 0,
+      "protocol": {
+        "L": 2,
+        "beta": 2.0,
+        "hardware": "Intel(R) Core(TM) i5-6600K CPU @ 3.50GHz",
+        "lambda": 3.044,
+        "seed": 3400,
+        "source_commit": "e95d7a7951c429a648d274120c14efc97396a4c1",
+        "steps": 10000,
+        "steps_per_measurement": 1
+      },
+      "reference_manifest_sha256": "836d3d492e9f3126167a3cf60d4e60571260a8dd2d1d2ea9b303bdf82dc84907",
+      "reference_measurement_core_seconds": 49.63567309999995,
+      "reference_run_id": "e5ec042a8d25034e",
+      "reference_wall_seconds": 17.33474270000079,
+      "tolerance": 1e-10,
+      "wall_speedup": 3.8419678640928376
+    },
+    {
+      "archive_paths": [
+        "benchmarking_tests/artifacts/estimator_microbenchmark/runs/eff7485cc3712251",
+        "benchmarking_tests/artifacts/estimator_microbenchmark/runs/68df9d88de7c4677"
+      ],
+      "compared_columns_per_row": 34,
+      "compared_rows": 40000,
+      "correctness_pass": true,
+      "fast_manifest_sha256": "f1ec54752503397da6fd496f05b03a10d63a9ff7eb282c9ed074774dfdd5f9bc",
+      "fast_measurement_core_seconds": 11.086395300000003,
+      "fast_run_id": "eff7485cc3712251",
+      "fast_wall_seconds": 4.775741999999809,
+      "max_abs_difference": 5.684341886080802e-14,
+      "max_q": 42.0,
+      "mean_q": 23.73835,
+      "measurement_speedup": 4.622404254338656,
+      "mismatches": 0,
+      "protocol": {
+        "L": 2,
+        "beta": 2.0,
+        "hardware": "Intel(R) Core(TM) i5-6600K CPU @ 3.50GHz",
+        "lambda": 3.044,
+        "seed": 4400,
+        "source_commit": "e95d7a7951c429a648d274120c14efc97396a4c1",
+        "steps": 10000,
+        "steps_per_measurement": 1
+      },
+      "reference_manifest_sha256": "a18c40b88ca01663313bab3a34333092ed260615fe971f9d10739aa49a552c24",
+      "reference_measurement_core_seconds": 51.2458008000001,
+      "reference_run_id": "68df9d88de7c4677",
+      "reference_wall_seconds": 17.061698499999693,
+      "tolerance": 1e-10,
+      "wall_speedup": 3.572575423881854
+    }
+  ],
+  "protocol": {
+    "L": 2,
+    "beta": 2.0,
+    "hardware": "Intel(R) Core(TM) i5-6600K CPU @ 3.50GHz",
+    "lambda": 3.044,
+    "source_commit": "e95d7a7951c429a648d274120c14efc97396a4c1",
+    "steps": 10000,
+    "steps_per_measurement": 1
+  },
+  "q_range": [
+    23.07195,
+    44.0
+  ],
+  "seeds": [
+    1400,
+    2400,
+    3400,
+    4400
+  ],
+  "wall_speedup_95_interval": [
+    3.572575423881854,
+    4.307851935937582
+  ],
+  "wall_speedup_claim_pass": true
+}
