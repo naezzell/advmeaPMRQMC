@@ -1,122 +1,113 @@
-Starting calculation for MPI process No. 3, RNG seed = 2192348857
-Starting calculation for MPI process No. 1, RNG seed = 1500814521
-Starting calculation for MPI process No. 0, RNG seed = 789480871
-Starting calculation for MPI process No. 2, RNG seed = 2660489639
-Starting calculation for MPI process No. 5, RNG seed = 4946644
-Starting calculation for MPI process No. 4, RNG seed = 1851183222
-Calculation completed for MPI process No. 2, elapsed time = 27.9885 seconds
-Calculation completed for MPI process No. 0, elapsed time = 28.0153 seconds
-Calculation completed for MPI process No. 3, elapsed time = 33.3003 seconds
-Calculation completed for MPI process No. 5, elapsed time = 33.3423 seconds
-Calculation completed for MPI process No. 1, elapsed time = 33.5128 seconds
-Calculation completed for MPI process No. 4, elapsed time = 33.6997 seconds
+Starting calculation for MPI process No. 1, RNG seed = 3070126469
+Starting calculation for MPI process No. 4, RNG seed = 1531158212
+Starting calculation for MPI process No. 2, RNG seed = 1019397576
+Starting calculation for MPI process No. 3, RNG seed = 1889605787
+Starting calculation for MPI process No. 0, RNG seed = 2847684346
+Calculation completed for MPI process No. 3, elapsed time = 50.6848 seconds
+Calculation completed for MPI process No. 0, elapsed time = 51.5818 seconds
+Calculation completed for MPI process No. 2, elapsed time = 51.9154 seconds
+Calculation completed for MPI process No. 1, elapsed time = 52.2082 seconds
+Calculation completed for MPI process No. 4, elapsed time = 53.1682 seconds
 
-Parameters: beta = 2, Tsteps = 100000, steps = 10000000
+Parameters: beta = 6, Tsteps = 100000, steps = 1000000
 
-Number of MPI processes: 6
+Number of MPI processes: 5
 
 Output of the MPI process No. 0:
 
 mean(sgn(W)) = 1
 std.dev.(sgn(W)) = 0
-mean(q) = 2.995076
-max(q) = 16
+mean(q) = 6.1005
+max(q) = 26
 Observable #1: H_{diag}
-mean(O) = 15.49068
-std.dev.(O) = 0.02807691
-Observable #2: measure_Hdiag_kint_0
-mean(O) = 302.644458
-std.dev.(O) = 0.865611296
-Observable #3: measure_Hdiag_kint_1
-mean(O) = 149.631465
-std.dev.(O) = 0.431989925
-Observable #4: measure_Hdiag_kint_2
-mean(O) = 99.3236388
-std.dev.(O) = 0.287770805
-Observable #5: measure_Hdiag_kint_3
-mean(O) = 74.3358311
-std.dev.(O) = 0.215743719
-Derived observable: susceptibility_k0
-mean(O) = 62.6832907
-std.dev.(O) = 0.108778758
-Derived observable: susceptibility_k1
-mean(O) = 29.6508813
-std.dev.(O) = 0.0612048687
-Derived observable: susceptibility_k2
-mean(O) = 19.3365832
-std.dev.(O) = 0.0427707566
-Derived observable: susceptibility_k3
-mean(O) = 14.3455394
-std.dev.(O) = 0.0328492217
-Derived observable: ratio_k0
-mean(O) = 2.11404478
-std.dev.(O) = 0.000882029015
-Derived observable: ratio_k1
-mean(O) = 3.06681702
-std.dev.(O) = 0.000569646441
-Derived observable: ratio_k2
-mean(O) = 4.04374824
-std.dev.(O) = 0.00040996262
-Elapsed cpu time = 28.0153006 seconds
+mean(O) = -2.48274
+std.dev.(O) = 0.00796140463
+Observable #2: H_{diag}^2
+mean(O) = 7.50128
+std.dev.(O) = 0.022113089
+Observable #3: measure_Hdiag_corr
+mean(O) = 6.48812128
+std.dev.(O) = 0.0245364223
+Observable #4: measure_Hdiag_Eint
+mean(O) = 38.0046434
+std.dev.(O) = 0.151345474
+Observable #5: measure_Hdiag_Fint
+mean(O) = 27.979008
+std.dev.(O) = 0.115967991
+Observable #6: measure_Hdiag_k2Int
+mean(O) = 55.7242448
+std.dev.(O) = 0.233252954
+Derived observable: diagonal energy susceptibility
+mean(O) = 1.02065598
+std.dev.(O) = 0.0985861609
+Derived observable: diagonal fidelity susceptibility
+mean(O) = 0.241017434
+std.dev.(O) = 0.0741221127
+Derived observable: k2 susceptibility
+mean(O) = 0.248263675
+std.dev.(O) = 0.148970281
+Derived observable: m0/m1 ratio
+mean(O) = 2.11739034
+std.dev.(O) = 0.454526396
+Derived observable: m1/m2 ratio
+mean(O) = 1.94162463
+std.dev.(O) = 0.588577167
+Elapsed cpu time = 51.581804 seconds
 
 Testing thermalization
 
-Observable #1: H_{diag}, mean of std.dev.(O) = 0.0292238846, std.dev. of mean(O) = 0.0127960621: test passed
-Observable #2: measure_Hdiag_kint_0, mean of std.dev.(O) = 0.890913204, std.dev. of mean(O) = 0.418750668: test passed
-Observable #3: measure_Hdiag_kint_1, mean of std.dev.(O) = 0.4440996, std.dev. of mean(O) = 0.207258654: test passed
-Observable #4: measure_Hdiag_kint_2, mean of std.dev.(O) = 0.295730591, std.dev. of mean(O) = 0.137331315: test passed
-Observable #5: measure_Hdiag_kint_3, mean of std.dev.(O) = 0.221675894, std.dev. of mean(O) = 0.102619902: test passed
-Derived observable: susceptibility_k0, mean of std.dev.(O) = 0.1143102, std.dev. of mean(O) = 0.0614533591: test passed
-Derived observable: susceptibility_k1, mean of std.dev.(O) = 0.0646796839, std.dev. of mean(O) = 0.0307658733: test passed
-Derived observable: susceptibility_k2, mean of std.dev.(O) = 0.0451216418, std.dev. of mean(O) = 0.0202745527: test passed
-Derived observable: susceptibility_k3, mean of std.dev.(O) = 0.0345785288, std.dev. of mean(O) = 0.0150480602: test passed
-Derived observable: ratio_k0, mean of std.dev.(O) = 0.000910088313, std.dev. of mean(O) = 0.000554576102: test passed
-Derived observable: ratio_k1, mean of std.dev.(O) = 0.00056788109, std.dev. of mean(O) = 0.00040931517: test passed
-Derived observable: ratio_k2, mean of std.dev.(O) = 0.000398580287, std.dev. of mean(O) = 0.000332650046: test passed
+Observable #1: H_{diag}, mean of std.dev.(O) = 0.00755952223, std.dev. of mean(O) = 0.00744247808: test passed
+Observable #2: H_{diag}^2, mean of std.dev.(O) = 0.0210132046, std.dev. of mean(O) = 0.020890572: test passed
+Observable #3: measure_Hdiag_corr, mean of std.dev.(O) = 0.0239558087, std.dev. of mean(O) = 0.0260823639: test passed
+Observable #4: measure_Hdiag_Eint, mean of std.dev.(O) = 0.149103655, std.dev. of mean(O) = 0.160076065: test passed
+Observable #5: measure_Hdiag_Fint, mean of std.dev.(O) = 0.11483706, std.dev. of mean(O) = 0.126102844: test passed
+Observable #6: measure_Hdiag_k2Int, mean of std.dev.(O) = 0.231491384, std.dev. of mean(O) = 0.25345841: test passed
+Derived observable: diagonal energy susceptibility, mean of std.dev.(O) = 0.0897414048, std.dev. of mean(O) = 0.0648610565: test passed
+Derived observable: diagonal fidelity susceptibility, mean of std.dev.(O) = 0.0677542178, std.dev. of mean(O) = 0.0419443294: test passed
+Derived observable: k2 susceptibility, mean of std.dev.(O) = 0.135849078, std.dev. of mean(O) = 0.0836970322: test passed
+Derived observable: m0/m1 ratio, mean of std.dev.(O) = 0.371483967, std.dev. of mean(O) = 0.185287413: test passed
+Derived observable: m1/m2 ratio, mean of std.dev.(O) = 0.446384903, std.dev. of mean(O) = 0.216117288: test passed
 
 Collecting statistics and finalizing the calculation
 
-Total number of MC updates = 60000000
-Total mean(q) = 2.98935667
-Total max(q) = 18
+Total number of MC updates = 5000000
+Total mean(q) = 6.123828
+Total max(q) = 28
 Total mean(sgn(W)) = 1
 Total std.dev.(sgn(W)) = 0
 Total of observable #1: H_{diag}
-Total mean(O) = 15.4878302
-Total std.dev.(O) = 0.0120880591
-Total of observable #2: measure_Hdiag_kint_0
-Total mean(O) = 302.597946
-Total std.dev.(O) = 0.371369452
-Total of observable #3: measure_Hdiag_kint_1
-Total mean(O) = 149.6114
-Total std.dev.(O) = 0.185364253
-Total of observable #4: measure_Hdiag_kint_2
-Total mean(O) = 99.3105214
-Total std.dev.(O) = 0.123497559
-Total of observable #5: measure_Hdiag_kint_3
-Total mean(O) = 74.3259118
-Total std.dev.(O) = 0.092596979
-Total of derived observable: susceptibility_k0
-Total mean(O) = 62.7250625
-Total std.dev.(O) = 0.0503009327
-Total of derived observable: susceptibility_k1
-Total mean(O) = 29.6749586
-Total std.dev.(O) = 0.0283702799
-Total of derived observable: susceptibility_k2
-Total mean(O) = 19.3528936
-Total std.dev.(O) = 0.0197951363
-Total of derived observable: susceptibility_k3
-Total mean(O) = 14.357691
-Total std.dev.(O) = 0.0151821416
-Total of derived observable: ratio_k0
-Total mean(O) = 2.11373716
-Total std.dev.(O) = 0.000393134007
-Total of derived observable: ratio_k1
-Total mean(O) = 3.06672058
-Total std.dev.(O) = 0.000253668302
-Total of derived observable: ratio_k2
-Total mean(O) = 4.04373383
-Total std.dev.(O) = 0.00018288397
-Total elapsed cpu time = 189.858905 seconds
+Total mean(O) = -2.480864
+Total std.dev.(O) = 0.00358374656
+Total of observable #2: H_{diag}^2
+Total mean(O) = 7.48752
+Total std.dev.(O) = 0.0099658374
+Total of observable #3: measure_Hdiag_corr
+Total mean(O) = 6.478035
+Total std.dev.(O) = 0.0112014373
+Total of observable #4: measure_Hdiag_Eint
+Total mean(O) = 37.9638685
+Total std.dev.(O) = 0.0710687763
+Total of observable #5: measure_Hdiag_Fint
+Total mean(O) = 27.9547134
+Total std.dev.(O) = 0.0552198784
+Total of observable #6: measure_Hdiag_k2Int
+Total mean(O) = 55.6809253
+Total std.dev.(O) = 0.111487558
+Total of derived observable: diagonal energy susceptibility
+Total mean(O) = 1.0357514
+Total std.dev.(O) = 0.0421250282
+Total of derived observable: diagonal fidelity susceptibility
+Total mean(O) = 0.258625511
+Total std.dev.(O) = 0.0313125938
+Total of derived observable: k2 susceptibility
+Total mean(O) = 0.288749603
+Total std.dev.(O) = 0.0624566997
+Total of derived observable: m0/m1 ratio
+Total mean(O) = 2.00241537
+Total std.dev.(O) = 0.162048767
+Total of derived observable: m1/m2 ratio
+Total mean(O) = 1.791348
+Total std.dev.(O) = 0.171364641
+Total elapsed cpu time = 259.558431 seconds
 
-Wall-clock time = 33.7009789 seconds
+Wall-clock time = 53.17104 seconds
