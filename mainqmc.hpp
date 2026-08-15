@@ -29,8 +29,6 @@
 #include"divdiff.hpp"
 #include"hamiltonian.hpp" // use a header file, which defines the Hamiltonian and the custom observables
 #include"parameters.hpp"  // parameters of the simulation such as the number of Monte-Carlo updates
-#include "fast_susceptibility.hpp"
-#include "test_operator.hpp"
 
 #define measurements (steps/stepsPerMeasurement)
 
@@ -68,8 +66,7 @@ int cycle_min_len, cycle_max_len, found_cycles, min_index, max_index;
 #define Nobservables 0
 #endif
 
-constexpr int N_specgap_observables = specgap_config.KMAX;
-const int N_all_observables = Nobservables + 14 + N_specgap_observables;
+const int N_all_observables = Nobservables + 16;
 int valid_observable[N_all_observables];
 
 unsigned long long bin_length = measurements / Nbins, bin_length_old;
@@ -425,12 +422,12 @@ void init(){
 #ifdef MEASURE_PARITY
 	valid_observable[Nobservables + 13] = 1;
 #endif
-#ifdef MEASURE_HDIAG_KINT
-  #define SPECGAP_OFFSET 14
-  for (size_t kk = 0; kk < specgap_config.KMAX; ++kk) {
-    valid_observable[Nobservables + SPECGAP_OFFSET + kk] = 1;
-  }
+#ifdef MEASURE_HDIAG_FINT2
+	valid_observable[Nobservables + 14] = 1;
 #endif
+#ifdef MEASURE_HDIAG_K2INT
+	valid_observable[Nobservables + 15] = 1;
+#endif	
 }
 
 double Metropolis(ExExFloat newWeight){
@@ -654,9 +651,7 @@ double measure_Hdiag(){
 	* 
 	* See Eq. 24 in [arXiv:2307.06503]
 	*/
-	// return currEnergy;
-	// return lattice.to_ullong();
-	return calculate_Oi(lattice);
+	return currEnergy;
 }
 
 double measure_Hdiag2(){
@@ -749,17 +744,11 @@ double measure_Hoffdiag_Eint(){
   	return R;
 }
 
-double measure_Hdiag_Fint_slow(){
-	/**
+double measure_Hdiag_Fint(){
+	/** 
 	* Estimates \int_0^{\beta/2} \tau <Hdiag(\tau)Hdiag> d\tau
-	*
+	* 
 	* See Eq. 13 in [arXiv:2408.03924]
-	*
-	* O(q^3) reference implementation. Kept for regression testing against
-	* measure_Hdiag_Fint() (the O(q^2) version, below), which replaced this
-	* as the one actually called during measurement. Validated against this
-	* function on 50,000+ real Monte Carlo walks (q up to 12) with zero
-	* mismatches before the swap.
 	*/
 	if (q == 0) {
 		return (d->z[0]) * (d->z[0]) / 8.0; // (-beta Ez0)(-beta Ez0)/8
@@ -786,119 +775,232 @@ double measure_Hdiag_Fint_slow(){
 	}
 }
 
-double measure_Hdiag_Fint(){
-	/**
-	* Estimates \int_0^{\beta/2} \tau <Hdiag(\tau)Hdiag> d\tau
-	*
-	* See Eq. 13 in [arXiv:2408.03924]
-	*
-	* O(q^2) implementation (replaces the original O(q^3) measure_Hdiag_Fint,
-	* kept as measure_Hdiag_Fint_slow() above for regression testing).
-	*
-	* The O(q^3) version recomputes the bracket e^{-(beta/2)[z_r,...,z_q,z_i]}
-	* from scratch (via AddElement/RemoveElement) for every (r,i) pair. Here,
-	* every i-bracket is seeded once at r=0 (O(q) fresh evaluations, O(q^2)
-	* total work) and then advanced in O(1) per step of r using the standard
-	* two-term divided-difference recursion applied to the appended-node
-	* family, solved for the "grow r by one" direction:
-	*
-	*   f[x_{r+1},...,x_q,x_i] = f[x_r,...,x_q,x_i]*(x_i - x_r) + f[x_r,...,x_q]
-	*
-	* IMPORTANT: here x_k denotes the PHYSICAL energy E_{z_k} = z_k/(-beta),
-	* not the raw d->z[k] (which is z_k = -beta*E_{z_k}, already prescaled --
-	* see how Ez0 is recovered via d->z[0]/(-beta) elsewhere in this file).
-	* The recursion's (x_i - x_r) factor must therefore be computed as
-	* (E_i - E_r) = (d->z[r] - d->z[i])/beta, NOT (d->z[i] - d->z[r])
-	* directly.
-	*
-	* Validated against measure_Hdiag_Fint_slow() on 50,000+ real Monte Carlo
-	* walks (q up to 12, including highly confluent/degenerate energies)
-	* before replacing it as the function actually called during measurement.
-	*/
-	if (q == 0) {
-		return (d->z[0]) * (d->z[0]) / 8.0;
-	}
-	else {
-		ExExFloat rddval, curr, tot_num(0.0), ddprefac = d->divdiffs[q]*beta_pow_factorial[q];
-		double Ez0 = (d->z[0]/(-beta));
+double measure_Hdiag_Fint2(){
+    /**
+     * Estimates \int_0^{\beta/2} \tau <Hdiag(\tau) Hdiag> d\tau
+     *
+     * Equivalent simplified version of measure_Hdiag_Fint().
+     *
+     * The first two terms in the r-sum from Theorem 2 simplify via the
+     * reverse-order Leibniz rule to
+     *
+     *   (beta^2/8) *
+     *   ( E_q exp[-beta [E_0,...,E_q]]
+     *     + exp[-beta [E_0,...,E_{q-1}]] ).
+     *
+     * This form is convenient because both divided differences are cached in d:
+     *
+     *   exp[-beta [E_0,...,E_q]]
+     *       = d->divdiffs[q] * beta_pow_factorial[q]
+     *
+     *   exp[-beta [E_0,...,E_{q-1}]]
+     *       = d->divdiffs[q-1] * beta_pow_factorial[q-1].
+     *
+     * The remaining double sum over (i-r) is unchanged.
+     */
 
-		ds1->CurrentLength = 0; ds2->CurrentLength = 0;
-		for(int k = q; k >= 0; k--) ds2->AddElement(d->z[k]/2);
+    if (q == 0) {
+        return (d->z[0]) * (d->z[0]) / 8.0; // (-beta Ez0)(-beta Ez0)/8
+    } else {
+        ExExFloat rddval, curr, tot_num(0.0);
 
-		// suffix[r] = e^{-(beta/2)[z_r,...,z_q]}; all available now, since
-		// divdiffs[] holds every prefix-of-add-order value simultaneously.
-		static ExExFloat suffix[qmax+1];
-		for(int r = 0; r <= q; r++) suffix[r] = ds2->divdiffs[q-r]*beta_div2_pow_factorial[q-r];
+        // exp[-beta [E_0,...,E_q]]
+        ExExFloat ddprefac = d->divdiffs[q] * beta_pow_factorial[q];
 
-		// Seed every i-bracket at r=0: B[i] = e^{-(beta/2)[z_0,...,z_q,z_i]}.
-		// O(q) fresh evaluations total (replaces the original's O(q^2) many).
-		static ExExFloat B[qmax+1];
-		for(int i = 1; i <= q; i++){
-			ds2->AddElement(d->z[i]/2);
-			B[i] = ds2->divdiffs[q+1]*beta_div2_pow_factorial[q+1];
-			ds2->RemoveElement();
-		}
-		ds2->CurrentLength = 0; // done with ds2; leave it empty, matching the original's end state
+        // exp[-beta [E_0,...,E_{q-1}]]
+        ExExFloat ddprev = d->divdiffs[q-1] * beta_pow_factorial[q-1];
 
-		for(int r = 0; r <= q; r++){
-			ds1->AddElement(d->z[r]/2);
-			rddval = ds1->divdiffs[r]*beta_div2_pow_factorial[r];
-			curr = suffix[r] * ((d->z[r])*(-beta/8.0));
-			for(int i = r+1; i <= q; i++) curr -= B[i] * (i-r);
-			if (r < q) curr += suffix[r+1] * (beta*beta/8.0);
-			tot_num += rddval * curr;
+        double Ez0 = d->z[0] / (-beta);
+        double Ezq = d->z[q] / (-beta);
 
-			if (r < q){
-				for(int i = r+2; i <= q; i++)
-					B[i] = B[i]*((d->z[r]-d->z[i])/beta) + suffix[r]; // recursion is in physical-energy units E_k=z_k/(-beta), NOT raw z_k
-			}
-		}
+        /*
+         * Simplified contribution:
+         *
+         *   (beta^2/8) *
+         *   ( E_q exp[-beta [E_0,...,E_q]]
+         *     + exp[-beta [E_0,...,E_{q-1}]] )
+         */
+        tot_num += (ddprefac * Ezq + ddprev) * (beta * beta / 8.0);
 
-		return (tot_num / ddprefac * Ez0).get_double();
-	}
+        /*
+         * Correction term:
+         *
+         *   - sum_{r=0}^q
+         *       exp[-beta/2 [E_0,...,E_r]]
+         *       sum_{i=r+1}^q
+         *          (i-r) exp[-beta/2 [E_r,...,E_q,E_i]]
+         */
+
+        ds1->CurrentLength = 0;
+        ds2->CurrentLength = 0;
+
+        // ds2 initially stores the half-beta suffix [E_0,...,E_q],
+        // added in reverse order so RemoveElement() advances the suffix.
+        for(int k = q; k >= 0; k--) {
+            ds2->AddElement(d->z[k] / 2);
+        }
+
+        for(int r = 0; r <= q; r++) {
+            ds1->AddElement(d->z[r] / 2);
+
+            // exp[-beta/2 [E_0,...,E_r]]
+            rddval = ds1->divdiffs[r] * beta_div2_pow_factorial[r];
+
+            curr = ExExFloat(0.0);
+
+            for(int i = r + 1; i <= q; i++) {
+                // Temporarily append E_i to [E_r,...,E_q].
+                ds2->AddElement(d->z[i] / 2);
+
+                // exp[-beta/2 [E_r,...,E_q,E_i]]
+                curr += ds2->divdiffs[q-r+1]
+                      * beta_div2_pow_factorial[q-r+1]
+                      * (i-r);
+
+                ds2->RemoveElement();
+            }
+
+            tot_num -= rddval * curr;
+
+            // Move suffix from [E_r,...,E_q] to [E_{r+1},...,E_q].
+            ds2->RemoveElement();
+        }
+
+        return (tot_num / ddprefac * Ez0).get_double();
+    }
 }
 
-static double measure_Hdiag_kint(size_t k) {
-  static std::array<double, specgap_config.KMAX> ret{};
-  static const std::vector<double> beta_pow_fac = [] {
-    std::vector<double> ret(qmax);
-    for (decltype(q) ii = 0; ii < qmax; ++ii) {
-      ret[ii] = beta_pow_factorial[ii].get_double();
+double measure_Hdiag_k2Int(){
+    /**
+     * Estimates
+     *
+     *   int_0^{beta/2} tau^2 <Hdiag(tau) Hdiag> dtau
+     *
+     * using the corrected estimator:
+     *
+     * q = 0:
+     *
+     *   beta^3 E_0^2 / 24
+     *
+     * q > 0:
+     *
+     *   beta^3 E_q^2 / 24
+     *
+     *   + (beta^3 E_q / 24)
+     *       * exp[-beta [E_0,...,E_{q-1}]]
+     *         / exp[-beta [E_0,...,E_q]]
+     *
+     *   - 2 E_0 / exp[-beta [E_0,...,E_q]]
+     *       * sum_{r=0}^q exp[-beta/2 [E_0,...,E_r]]
+     *           sum_{i=r+1}^q
+     *               sum_{j=i}^q
+     *                   i exp[-beta/2 [E_r,...,E_q,E_i,E_j]]
+     *
+     * Conventions:
+     *
+     *   d->z[k] = -beta * E_k.
+     */
+
+    if(q == 0){
+        // beta^3 E_0^2 / 24 = beta * (-beta E_0)^2 / 24
+      return beta * (d->z[0]) * (d->z[0]) / 24.0;
     }
-    return ret;
-  }();
-  static const std::vector<double> beta_div2_pow_fac = [] {
-    std::vector<double> ret(qmax);
-    for (decltype(q) ii = 0; ii < qmax; ++ii) {
-      ret[ii] = beta_div2_pow_factorial[ii].get_double();
+
+    double Ez0 = d->z[0] / (-beta);
+    double Ezq = d->z[q] / (-beta);
+
+    // exp[-beta [E_0,...,E_q]]
+    ExExFloat ddprefac = d->divdiffs[q] * beta_pow_factorial[q];
+
+    // exp[-beta [E_0,...,E_{q-1}]]
+    ExExFloat ddprev = d->divdiffs[q-1] * beta_pow_factorial[q-1];
+
+    /*
+     * First two simplified terms:
+     *
+     *   beta^3 E_q^2 / 24
+     *
+     *   + (beta^3 E_q / 24)
+     *       * exp[-beta [E_0,...,E_{q-1}]]
+     *         / exp[-beta [E_0,...,E_q]]
+     */
+    ExExFloat result(0.0);
+
+    result += beta * beta * beta * Ezq * Ezq / 24.0;
+    result += (ddprev / ddprefac) * (beta * beta * beta * Ezq / 24.0);
+
+    /*
+     * Correction term:
+     *
+     *   - 2 E_0 / exp[-beta [E_0,...,E_q]]
+     *       * sum_{r=0}^q exp[-beta/2 [E_0,...,E_r]]
+     *           sum_{i=r+1}^q
+     *               sum_{j=i}^q
+     *                   i exp[-beta/2 [E_r,...,E_q,E_i,E_j]]
+     */
+
+    ExExFloat correction_sum(0.0);
+
+    ds1->CurrentLength = 0;
+    ds2->CurrentLength = 0;
+
+    /*
+     * ds2 initially stores [E_0,...,E_q] at half beta.
+     * At the end of each r iteration, RemoveElement() advances
+     * the suffix:
+     *
+     *   [E_r,...,E_q] -> [E_{r+1},...,E_q].
+     */
+    for(int k = q; k >= 0; k--){
+        ds2->AddElement(d->z[k] / 2);
     }
-    return ret;
-  }();
 
-  if (k == 0) {
-    std::vector<double> Ei(q+1);
-    std::vector<double> Oi(q+1);
-    auto lattice_backup = lattice;
-    for (decltype(q) ii = 0; ii < q+1; ++ii) {
-      Ei[ii] = (d->z[ii] / -beta);
-      // Oi[ii] = lattice.to_ullong();
-      Oi[ii] = calculate_Oi(lattice);
+    for(int r = 0; r <= q; r++){
 
-      if (ii < q) {
-      	ApplyOperator(Sq[ii]);
-      }
+        ds1->AddElement(d->z[r] / 2);
+
+        // exp[-beta/2 [E_0,...,E_r]]
+        ExExFloat prefix_dd =
+            ds1->divdiffs[r] * beta_div2_pow_factorial[r];
+
+        ExExFloat inner_sum(0.0);
+
+        /*
+         * At this point ds2 represents [E_r,...,E_q].
+         */
+        for(int i = r + 1; i <= q; i++){
+            for(int j = i; j <= q; j++){
+
+                // Temporarily append E_i and E_j.
+                ds2->AddElement(d->z[i] / 2);
+                ds2->AddElement(d->z[j] / 2);
+
+                /*
+                 * [E_r,...,E_q,E_i,E_j] has
+                 *
+                 *   (q-r+1) + 2 = q-r+3
+                 *
+                 * arguments, so the divided-difference order is q-r+2.
+                 */
+                inner_sum +=
+                    ds2->divdiffs[q - r + 2]
+                  * beta_div2_pow_factorial[q - r + 2]
+                  * (i - r);
+
+                ds2->RemoveElement();
+                ds2->RemoveElement();
+            }
+        }
+
+        correction_sum += prefix_dd * inner_sum;
+
+        // Advance suffix [E_r,...,E_q] -> [E_{r+1},...,E_q].
+        ds2->RemoveElement();
     }
-    lattice = lattice_backup;
 
-    std::vector<double> dd_beta(q+1);
-    for (decltype(q) ii = 0; ii < q+1; ++ii) {
-      dd_beta[ii] = d->divdiffs[ii].get_double();
-    }
+    result += (2.0 * Ez0 / ddprefac) * correction_sum;
 
-
-    ret = Mk<specgap_config.KMAX>(Ei, Oi, dd_beta, beta_pow_fac, beta_div2_pow_fac, beta);
-  }
-  return ret[k];
+    return result.get_double();
 }
 
 double measure_Hoffdiag_Fint(){
@@ -917,128 +1019,47 @@ double measure_Z_magnetization(){
 	return (2.0*lattice.count() - N)/N;
 }
 
-std::string name_of_observable(int n) {
-  std::string s;
-  if (n < Nobservables) {
+std::string name_of_observable(int n){
+	std::string s;
+	if(n < Nobservables){
 #ifdef MEASURE_CUSTOM_OBSERVABLES
-    switch (n) {
-    case 0:
-      s = "A";
-      break;
-    case 1:
-      s = "A^2";
-      break;
-    case 2:
-      s = "A(tau)A";
-      break;
-    case 3:
-      s = "A_Eint";
-      break;
-    case 4:
-      s = "A_Fint";
-      break;
-    case 5:
-      s = "B";
-      break;
-    case 6:
-      s = "B^2";
-      break;
-    case 7:
-      s = "B(tau)B";
-      break;
-    case 8:
-      s = "B_Eint";
-      break;
-    case 9:
-      s = "B_Fint";
-      break;
-    case 10:
-      s = "A(tau)B";
-      break;
-    case 11:
-      s = "AB_Eint";
-      break;
-    case 12:
-      s = "AB_Fint";
-      break;
-    case 13:
-      s = "RE_AB";
-      break;
-    case 14:
-      s = "IM_AB";
-      break;
-    }
+		switch(n){
+			case 0: s = "A"; break;
+			case 1: s = "A^2"; break;
+			case 2: s = "A(tau)A"; break;
+			case 3: s = "A_Eint"; break; 
+			case 4: s = "A_Fint"; break; 
+			case 5: s = "B"; break;
+			case 6: s = "B^2"; break;
+			case 7: s = "B(tau)B"; break;
+			case 8: s = "B_Eint"; break;
+			case 9: s = "B_Fint"; break;
+			case 10: s = "A(tau)B"; break; 
+			case 11: s = "AB_Eint"; break; 
+			case 12: s = "AB_Fint"; break; 
+			case 13: s = "RE_AB"; break;
+			case 14: s = "IM_AB"; break;
+		}
 #endif
-  } else {
-    auto idx = n - Nobservables;
-    if (idx >= 14 && idx < 14 + specgap_config.KMAX) {
-      size_t k = idx - 14;
-      return "measure_Hdiag_kint_" + std::to_string(k);
-    }
-    switch (n - Nobservables) {
-    case 0:
-      s = "H";
-      break;
-    case 1:
-      s = "H^2";
-      break;
-    case 2:
-      s = "H_{diag}";
-      break;
-    case 3:
-      s = "H_{diag}^2";
-      break;
-    case 4:
-      s = "H_{offdiag}";
-      break;
-    case 5:
-      s = "H_{offdiag}^2";
-      break;
-    case 6:
-      s = "Z_magnetization";
-      break;
-    case 7:
-      s = "measure_Hdiag_corr";
-      break;
-    case 8:
-      s = "measure_Hdiag_Eint";
-      break;
-    case 9:
-      s = "measure_Hdiag_Fint";
-      break;
-    case 10:
-      s = "measure_Hoffdiag_corr";
-      break;
-    case 11:
-      s = "measure_Hoffdiag_Eint";
-      break;
-    case 12:
-      s = "measure_Hoffdiag_Fint";
-      break;
-    case 13:
-      s = "measure_parity";
-      break;
-    // case 14:
-    //   s = "measure_Hdiag_Fint2";
-    //   break;
-    // case 15:
-    //   s = "measure_Hdiag_k2Int";
-    //   break;
-    // case 16:
-    //   s = "measure_Hdiag_kint";
-    //   break;
-    // case 17:
-    //   s = "measure_Hdiag_kint";
-    //   break;
-    // case 18:
-    //   s = "measure_Hdiag_kint";
-    //   break;
-    // default:
-    //   s = "measure_Hdiag_kInt";
-    //   break;
-    }
-  }
-  return s;
+	} else switch(n-Nobservables){
+			case 0: s = "H";             break;
+			case 1: s = "H^2";           break;
+			case 2: s = "H_{diag}";      break;
+			case 3: s = "H_{diag}^2";    break;
+			case 4: s = "H_{offdiag}";   break;
+			case 5: s = "H_{offdiag}^2"; break;
+			case 6: s = "Z_magnetization"; break;
+			case 7: s = "measure_Hdiag_corr"; break;
+      		case 8: s = "measure_Hdiag_Eint"; break;
+			case 9: s = "measure_Hdiag_Fint"; break; 
+			case 10: s = "measure_Hoffdiag_corr"; break;
+			case 11: s = "measure_Hoffdiag_Eint"; break;
+			case 12: s = "measure_Hoffdiag_Fint"; break;
+			case 13: s = "measure_parity"; break;
+			case 14: s = "measure_Hdiag_Fint2"; break;
+		        case 15: s = "measure_Hdiag_k2Int"; break; 
+	}
+	return s;
 }
 
 #ifdef MEASURE_CUSTOM_OBSERVABLES
@@ -1688,14 +1709,11 @@ double measure_AB_Eint(int n, int m){
 	return R;
 }
 
-double measure_AB_Fint_slow(int n, int m){
-	/**
-	* Estimates \int_0^{\beta/2} \tau <A(\tau)B> \dtau
-	* for A (B) in A.txt (B.txt) the nth (mth) operator
+double measure_AB_Fint(int n, int m){
+	/** 
+	* Estimates \int_0^{\beta/2} \tau <A(\tau)B> \dtau 
+	* for A (B) in A.txt (B.txt) the nth (mth) operator 
 	* passed here via ./prepare.bin A.txt ... B.txt
-	*
-	* O(q^4) reference implementation. Kept for regression testing against
-	* measure_AB_Fint() (the O(q^3) version, below).
 	*/
 	int i,j,k,cont,l,lenk,lenl,r;
 	std::complex<double> A0z = calc_MD0(n);
@@ -1849,193 +1867,6 @@ double measure_AB_Fint_slow(int n, int m){
 	return R;
 }
 
-double measure_AB_Fint(int n, int m){
-	/**
-	* Estimates \int_0^{\beta/2} \tau <A(\tau)B> \dtau
-	* for A (B) in A.txt (B.txt) the nth (mth) operator
-	* passed here via ./prepare.bin A.txt ... B.txt
-	*
-	* O(q^3) implementation (replaces the original O(q^4)
-	* measure_AB_Fint_slow, kept above for regression testing).
-	*
-	* Each of the four (k,l) blocks below has an innermost u-loop that
-	* recomputed an append-in-range-node bracket from scratch for every
-	* (r,u) pair (the O(q^4) bottleneck). Applying the same sliding-append
-	* recursion used in measure_Hdiag_Fint -- here to the more general
-	* bracket family that includes an extra confluent node and a dummy
-	* zero -- each u-bracket is seeded once (at the smallest r for its j)
-	* and advanced in O(1) per split point, instead of recomputed per
-	* (r,u) pair. See measure_Hdiag_Fint's own comment for the scaling
-	* convention (x_k = E_{z_k} = d->z[k]/(-beta), not raw d->z[k]).
-	*/
-	int i,j,k,cont,l,lenk,lenl,r;
-	std::complex<double> A0z = calc_MD0(n);
-	std::complex<double> Akz = 0.0, T = 0.0, prefac = 0.0, inner_prefac = 0.0;
-	double ddratio = 0.0, R_ = 0.0;
-	calc_MD0_trace(m);
-	static ExExFloat Uarr[qmax+1];
-
-	if (A0z != 0.0) {
-		// (k=0, l=0) pure diagonal contribution.
-		prefac = -A0z / (d->divdiffs[q]*beta_pow_factorial[q]).get_double();
-		for(int j = 0; j <= q; j++) {
-			ds1->CurrentLength = 0; ds2->CurrentLength = 0;
-			for(int i = q; i >= j; i--) ds2->AddElement((-beta/2)*(d->z[i]/(-beta)));
-			for(int i = j; i >= 0; i--) ds2->AddElement((-beta/2)*(d->z[i]/(-beta)));
-			// ds2 = N(j,0), q+2 elements (confluent at x_j).
-
-			// Seed Uarr[u] = g(N(j,0) U {0,x_u}) for u=0..j.
-			ds2->AddElement(0);
-			for(int u = 0; u <= j; u++){
-				ds2->AddElement((-beta/2)*(d->z[u]/(-beta)));
-				Uarr[u] = ds2->divdiffs[q+3]*beta_div2_pow_factorial[q+3];
-				ds2->RemoveElement();
-			}
-			ds2->RemoveElement(); // back to N(j,0)
-
-			for(int r = 0; r <= j; r++){
-				ds1->AddElement((-beta/2.0)*(d->z[r]/(-beta)));
-				inner_prefac = prefac * currMD0_trace[j] * (ds1->divdiffs[r]*beta_div2_pow_factorial[r]).get_double();
-				T += (beta/2.0)*inner_prefac*(ds2->divdiffs[q+1-r]*beta_div2_pow_factorial[q+1-r]).get_double();
-				ds2->AddElement(0);
-				ExExFloat suffix2_r = ds2->divdiffs[q+2-r]*beta_div2_pow_factorial[q+2-r];
-				T += (inner_prefac*(j-r+1.0)*suffix2_r.get_double());
-				for(int u = r; u <= j; u++) T += (d->z[u]/(-beta))*inner_prefac*Uarr[u].get_double();
-				ds2->RemoveElement(); // undo the {0}
-				if (r < j){
-					for(int u = r+1; u <= j; u++)
-						Uarr[u] = Uarr[u]*((d->z[r]-d->z[u])/beta) + suffix2_r;
-					ds2->RemoveElement(); // drop x_r
-				}
-			}
-		}
-		// (k=0, l) cross term contribution.
-		prefac = -A0z / ((d->divdiffs[q]*beta_pow_factorial[q]).get_double());
-		for(l=0;l<MNop[m];l++){
-			Ql = MP[m][l]; lenl = Ql.count(); if(lenl>q) continue;
-			calc_MD_trace_l(m ,l);
-			for (int j = lenl; j <= q; j++){
-				if(!NoRepetitionCheck(Sq+(j-lenl),lenl)) continue;
-				cont = 0; for(i=0;i<lenl;i++) if(!Ql.test(Sq[j-lenl+i])){ cont = 1; break;} if(cont) continue;
-				ds1->CurrentLength=0; ds2->CurrentLength=0;
-				for(int i = j; i <= q; i++) ds2->AddElement((-beta/2)*(d->z[i]/(-beta)));
-				for(int i = j-lenl; i>=0; i--) ds2->AddElement((-beta/2)*(d->z[i]/(-beta)));
-				int Rmax = j - lenl;
-				// ds2 = N'(j,0), q-lenl+2 elements (no confluence, gap between Λ_j and Ω).
-
-				ds2->AddElement(0);
-				for(int u = 0; u <= Rmax; u++){
-					ds2->AddElement((-beta/2)*(d->z[u]/(-beta)));
-					Uarr[u] = ds2->divdiffs[q+3-lenl]*beta_div2_pow_factorial[q+3-lenl];
-					ds2->RemoveElement();
-				}
-				ds2->RemoveElement();
-
-				for(int r = 0; r <= Rmax; r++){
-					ds1->AddElement((-beta/2)*(d->z[r]/(-beta)));
-					inner_prefac = prefac*(currMDl_trace[j]/factorial[lenl])*(currD_partial[j-lenl]/currD_partial[j])*(ds1->divdiffs[r]*beta_div2_pow_factorial[r]).get_double();
-					T += inner_prefac*(beta/2)*(ds2->divdiffs[q+1-lenl-r]*beta_div2_pow_factorial[q+1-lenl-r]).get_double();
-					ds2->AddElement(0);
-					ExExFloat suffix2_r = ds2->divdiffs[q+2-lenl-r]*beta_div2_pow_factorial[q+2-lenl-r];
-					T += inner_prefac*(Rmax-r+1.0)*suffix2_r.get_double();
-					for(int u = r; u <= Rmax; u++) T += inner_prefac*(d->z[u]/(-beta))*Uarr[u].get_double();
-					ds2->RemoveElement();
-					if (r < Rmax){
-						for(int u = r+1; u <= Rmax; u++)
-							Uarr[u] = Uarr[u]*((d->z[r]-d->z[u])/beta) + suffix2_r;
-						ds2->RemoveElement();
-					}
-				}
-			}
-		}
-	}
-	// (k, l=0) and (k, l) contributions.
-	for(k=0;k<MNop[n];k++){
-		Akz = calc_MD(n,k);
-		if(Akz==0.0) continue;
-		Pk = MP[n][k]; lenk = Pk.count(); if(lenk>q) continue;
-		if(!NoRepetitionCheck(Sq+(q-lenk),lenk)) continue;
-		cont = 0; for(i=0;i<lenk;i++) if(!Pk.test(Sq[q-1-i])){ cont = 1; break;} if(cont) continue;
-		int Qtop = q - lenk;
-		prefac = -(Akz / factorial[lenk]) / ((d->divdiffs[q]*beta_pow_factorial[q]).get_double());
-		for (int j = 0; j <= Qtop; j++){
-			ds1->CurrentLength=0; ds2->CurrentLength=0;
-			for(int i = j; i <= Qtop; i++) ds2->AddElement((-beta/2)*(d->z[i]/(-beta)));
-			for(int i = j; i>=0; i--) ds2->AddElement((-beta/2)*(d->z[i]/(-beta)));
-			// ds2 = N''(j,0), Qtop+2 elements (confluent at x_j).
-
-			ds2->AddElement(0);
-			for(int u = 0; u <= j; u++){
-				ds2->AddElement((-beta/2)*(d->z[u]/(-beta)));
-				Uarr[u] = ds2->divdiffs[q+3-lenk]*beta_div2_pow_factorial[q+3-lenk];
-				ds2->RemoveElement();
-			}
-			ds2->RemoveElement();
-
-			for(int r = 0; r <= j; r++){
-				ds1->AddElement((-beta/2)*(d->z[r]/(-beta)));
-				inner_prefac = prefac*currMD0_trace[j]*(currD_partial[Qtop]/currD)*(ds1->divdiffs[r]*beta_div2_pow_factorial[r]).get_double();
-				T += inner_prefac*(beta/2)*(ds2->divdiffs[q+1-lenk-r]*beta_div2_pow_factorial[q+1-lenk-r]).get_double();
-				ds2->AddElement(0);
-				ExExFloat suffix2_r = ds2->divdiffs[q+2-lenk-r]*beta_div2_pow_factorial[q+2-lenk-r];
-				T += inner_prefac*(j-r+1.0)*suffix2_r.get_double();
-				for(int u = r; u <= j; u++) T += inner_prefac*(d->z[u]/(-beta))*Uarr[u].get_double();
-				ds2->RemoveElement();
-				if (r < j){
-					for(int u = r+1; u <= j; u++)
-						Uarr[u] = Uarr[u]*((d->z[r]-d->z[u])/beta) + suffix2_r;
-					ds2->RemoveElement();
-				}
-			}
-		}
-		// (k, l) Leibniz rule contribution.
-		for(l=0;l<MNop[m];l++){
-			Ql = MP[m][l]; lenl = Ql.count(); if(lenk+lenl>q) continue;
-			calc_MD_trace_l(m ,l);
-			prefac = -(Akz / factorial[lenk]) / ((d->divdiffs[q]*beta_pow_factorial[q]).get_double());
-			for (int j = lenl; j <= Qtop; j++){
-				if(!NoRepetitionCheck(Sq+(j-lenl),lenl)) continue;
-				cont = 0; for(i=0;i<lenl;i++) if(!Ql.test(Sq[j-lenl+i])){ cont = 1; break;} if(cont) continue;
-				ds1->CurrentLength=0; ds2->CurrentLength=0;
-				for(int i = j; i <= Qtop; i++) ds2->AddElement((-beta/2.0)*(d->z[i]/(-beta)));
-				for(int i = j-lenl; i>=0; i--) ds2->AddElement((-beta/2.0)*(d->z[i]/(-beta)));
-				int Rmax = j - lenl;
-				// ds2 = N'''(j,0), Qtop-lenl-... wait: (Qtop-j+1)+(j-lenl+1) = Qtop-lenl+2 elements, no confluence.
-
-				ds2->AddElement(0);
-				for(int u = 0; u <= Rmax; u++){
-					ds2->AddElement((-beta/2.0)*(d->z[u]/(-beta)));
-					Uarr[u] = ds2->divdiffs[q+3-lenl-lenk]*beta_div2_pow_factorial[q+3-lenl-lenk];
-					ds2->RemoveElement();
-				}
-				ds2->RemoveElement();
-
-				for(int r = 0; r <= Rmax; r++){
-					ds1->AddElement((-beta/2.0)*(d->z[r]/(-beta)));
-					inner_prefac = prefac*(currMDl_trace[j]/factorial[lenl])*(currD_partial[j-lenl]/currD)*(currD_partial[Qtop]/currD_partial[j])*(ds1->divdiffs[r]*beta_div2_pow_factorial[r]).get_double();
-					T += inner_prefac*(beta/2.0)*(ds2->divdiffs[q+1-lenl-lenk-r]*beta_div2_pow_factorial[q+1-lenl-lenk-r]).get_double();
-					ds2->AddElement(0);
-					ExExFloat suffix2_r = ds2->divdiffs[q+2-lenl-lenk-r]*beta_div2_pow_factorial[q+2-lenl-lenk-r];
-					T += inner_prefac*(Rmax-r+1.0)*suffix2_r.get_double();
-					for(int u = r; u <= Rmax; u++) T += inner_prefac*(d->z[u]/(-beta))*Uarr[u].get_double();
-					ds2->RemoveElement();
-					if (r < Rmax){
-						for(int u = r+1; u <= Rmax; u++)
-							Uarr[u] = Uarr[u]*((d->z[r]-d->z[u])/beta) + suffix2_r;
-						ds2->RemoveElement();
-					}
-				}
-			}
-		}
-	}
-	#ifdef ABS_WEIGHTS
-		R_ = std::abs(T)*currWeight.sgn()*cos(std::arg(T)+std::arg(currD));
-	#else
-		R_ = std::real(currD*T)/std::real(currD);
-	#endif
-	return R_;
-}
-
 double measure_AB_real(int n, int m){
 	/** 
 	* Estimates <AB> for A (B) in A.txt (B.txt) the nth (mth) operator 
@@ -2165,130 +1996,58 @@ double measure_AB_imag(int n, int m){
 }
 #endif
 
-double measure_observable(int n) {
-  double R = 0;
-  if (valid_observable[n])
-    if (n < Nobservables) {
+double measure_observable(int n){
+	double R = 0;
+	if(valid_observable[n]) if(n < Nobservables){
 #ifdef MEASURE_CUSTOM_OBSERVABLES
-      /**
-       * Estimates things like <O>, <O^2>, and so on where O is in O.txt
-       *
-       * Use ./prepare.bin H.txt $(ls O.txt 2> /dev/null) to measure only case 0
-       * ./prepare.bin H.txt $(ls O.txt O.txt 2> /dev/null) to measure case 0
-       * and 1 and so on...
-       */
-      int i, k, len, cont, l, lenk, lenl, j, t, r;
-      std::complex<ExExFloat> eef_cont(0.0),
-          dd_ratio; // the exexfloat contributions
-      std::complex<double> A0z = calc_MD0(n);
-      std::complex<double> Akz = 0.0, T = 0.0;
-      switch (n) {
-      case 0:
-        R = measure_O(0);
-        break;
-      case 1:
-        R = measure_O2(0);
-        break;
-      case 2:
-        R = measure_O_corr(0);
-        break;
-      case 3:
-        R = measure_O_Eint(0);
-        break;
-      case 4:
-        R = measure_O_Fint(0);
-        break;
-      case 5:
-        R = measure_O(5);
-        break;
-      case 6:
-        R = measure_O2(5);
-        break;
-      case 7:
-        R = measure_O_corr(5);
-        break;
-      case 8:
-        R = measure_O_Eint(5);
-        break;
-      case 9:
-        R = measure_O_Fint(5);
-        break;
-      case 10:
-        R = measure_AB_corr(0, 5);
-        break;
-      case 11:
-        R = measure_AB_Eint(0, 5);
-        break;
-      case 12:
-        R = measure_AB_Fint(0, 5);
-        break;
-      case 13:
-        R = (measure_AB_real(0, 5) + measure_AB_real(5, 0)) / 2.0;
-        break;
-      case 14:
-        R = (measure_AB_imag(0, 5) - measure_AB_imag(5, 0)) / 2.0;
-        break;
-      }
+		/** 
+		* Estimates things like <O>, <O^2>, and so on where O is in O.txt
+		* 
+		* Use ./prepare.bin H.txt $(ls O.txt 2> /dev/null) to measure only case 0
+		* ./prepare.bin H.txt $(ls O.txt O.txt 2> /dev/null) to measure case 0 and 1
+		* and so on...
+		*/
+		int i,k,len,cont,l,lenk,lenl,j,t,r;
+		std::complex<ExExFloat> eef_cont(0.0), dd_ratio; //the exexfloat contributions
+		std::complex<double> A0z = calc_MD0(n);
+		std::complex<double> Akz = 0.0, T = 0.0;
+		switch(n){
+			case 0: R = measure_O(0); break;
+			case 1: R = measure_O2(0); break;
+			case 2: R = measure_O_corr(0); break;
+			case 3: R = measure_O_Eint(0); break;
+			case 4: R = measure_O_Fint(0); break;
+			case 5: R = measure_O(5); break;
+			case 6: R = measure_O2(5); break;
+			case 7: R = measure_O_corr(5); break;
+			case 8: R = measure_O_Eint(5); break;
+			case 9: R = measure_O_Fint(5); break;
+			case 10: R = measure_AB_corr(0, 5); break; 
+			case 11: R = measure_AB_Eint(0, 5); break; 
+			case 12: R = measure_AB_Fint(0, 5); break;
+			case 13: R = (measure_AB_real(0, 5) + measure_AB_real(5, 0)) / 2.0; break;
+			case 14: R = (measure_AB_imag(0, 5) - measure_AB_imag(5, 0)) / 2.0; break;
+		}
 #endif
-    } else {
-      auto idx = n - Nobservables;
-      if (idx >= 14 && idx < 14 + specgap_config.KMAX) {
-        size_t k = idx - 14;
-        return measure_Hdiag_kint(k);
-      }
-
-      switch (n - Nobservables) {
-        case 0:
-          R = measure_H();
-          break;
-        case 1:
-          R = measure_H2();
-          break;
-        case 2:
-          R = measure_Hdiag();
-          break;
-        case 3:
-          R = measure_Hdiag2();
-          break;
-        case 4:
-          R = measure_Hoffdiag();
-          break;
-        case 5:
-          R = measure_Hoffdiag2();
-          break;
-        case 6:
-          R = measure_Z_magnetization();
-          break;
-        case 7:
-          R = measure_Hdiag_corr();
-          break;
-        case 8:
-          R = measure_Hdiag_Eint();
-          break;
-        case 9:
-          R = measure_Hdiag_Fint();
-          break;
-        case 10:
-          R = measure_Hoffdiag_corr();
-          break;
-        case 11:
-          R = measure_Hoffdiag_Eint();
-          break;
-        case 12:
-          R = measure_Hoffdiag_Fint();
-          break;
-        case 13:
-          R = measure_parity();
-          break;
-        // case 14:
-        //   R = measure_Hdiag_Fint2();
-        //   break;
-        // case 15:
-        //   R = measure_Hdiag_k2Int();
-        //   break;
-        }
-      }
-  return R;
+	} else  switch(n-Nobservables){
+			case 0:	R = measure_H(); break;
+			case 1:	R = measure_H2(); break;
+			case 2:	R = measure_Hdiag(); break;
+			case 3:	R = measure_Hdiag2(); break;
+			case 4:	R = measure_Hoffdiag(); break;
+			case 5:	R = measure_Hoffdiag2(); break;
+			case 6: R = measure_Z_magnetization(); break;
+			case 7: R = measure_Hdiag_corr(); break;
+                        case 8: R = measure_Hdiag_Eint(); break;
+			case 9: R = measure_Hdiag_Fint(); break;
+			case 10: R = measure_Hoffdiag_corr(); break; 
+			case 11: R = measure_Hoffdiag_Eint(); break;
+			case 12: R = measure_Hoffdiag_Fint(); break;
+			case 13: R = measure_parity(); break;
+			case 14: R = measure_Hdiag_Fint2(); break;
+	                case 15: R = measure_Hdiag_k2Int(); break; 
+	}
+	return R;
 }
 
 void measure(){
@@ -2313,139 +2072,50 @@ void measure(){
 
 double mean_O[N_all_observables], stdev_O[N_all_observables], mean_O_backup[N_all_observables];
 
-const int N_specgap_susceptibilities = specgap_config.KMAX;
-const int N_specgap_ratios = specgap_config.KMAX - 1;
-const int N_derived_observables_base = 8;
-const int N_derived_observables = N_derived_observables_base + N_specgap_susceptibilities + N_specgap_ratios;
-// const int N_derived_observables = 5;  // we define number of derived observables
+const int N_derived_observables = 8;  // we define number of derived observables
 
-std::string name_of_derived_observable(int n) {
-    // Explicit starting indices for clarity
-    const int susceptibility_start = N_derived_observables_base;                          // Index 8
-    const int ratio_start          = susceptibility_start + N_specgap_susceptibilities; // Index 8 + KMAX
-
-    // 1. Check for Ratios [8 + KMAX, N_derived_observables)
-    if (n >= ratio_start) {
-        size_t kk = n - ratio_start;
-        return "ratio_k" + std::to_string(kk);
-    } 
-    // 2. Check for Susceptibilities [8, 8 + KMAX)
-    else if (n >= susceptibility_start) {
-        size_t kk = n - susceptibility_start;
-        return "susceptibility_k" + std::to_string(kk);
-    } 
-    // 3. Base Observables [0, 8)
-    else {
-        switch (n) {
-            case 0: return "diagonal energy susceptibility";
-            case 1: return "diagonal fidelity susceptibility";
-            case 2: return "offdiagonal energy susceptibility";
-            case 3: return "offdiagonal fidelity susceptibility";
-            case 4: return "specific heat";
-            default: return "unknown_derived_observable";
-        }
-    }
+std::string name_of_derived_observable(int n){ // we define names of derived observables
+	std::string s;
+	switch(n){
+		case 0 : s = "diagonal energy susceptibility"; break;
+		case 1 : s = "diagonal fidelity susceptibility"; break;
+		case 2 : s = "offdiagonal energy susceptibility"; break;
+		case 3 : s = "offdiagonal fidelity susceptibility"; break;
+		case 4 : s = "specific heat"; break;
+	        case 5:  s = "k2 susceptibility"; break;
+		case 6:  s = "m0/m1 ratio"; break;
+		case 7:  s = "m1/m2 ratio"; break;
+	}
+	return s;
 }
 
-int valid_derived_observable(int n){ // we define which observables are needed
-                                      // for each derived observable
-  int r = 0;
-
-  const int susceptibility_start = N_derived_observables_base;                          // Index 8
-  const int ratio_start          = susceptibility_start + N_specgap_susceptibilities; // Index 8 + KMAX
-  if (n >= ratio_start) {
-      size_t kk = n - ratio_start;
-      // return false;
-      return valid_observable[Nobservables + 2] &&
-             valid_observable[Nobservables + 14 + kk] &&
-             valid_observable[Nobservables + 14 + kk + 1];
-  } 
-  else if (n >= susceptibility_start) {
-      size_t kk = n - susceptibility_start;
-      return valid_observable[Nobservables + 2] &&
-             valid_observable[Nobservables + 14 + kk];
-  }  
-
-  switch (n) {
-  case 0:
-    r = valid_observable[Nobservables + 2] &&
-        valid_observable[Nobservables + 8];
-    break;
-  case 1:
-    r = valid_observable[Nobservables + 2] &&
-        valid_observable[Nobservables + 9];
-    break;
-  case 2:
-    r = valid_observable[Nobservables + 4] &&
-        valid_observable[Nobservables + 11];
-    break;
-  case 3:
-    r = valid_observable[Nobservables + 4] &&
-        valid_observable[Nobservables + 12];
-    break;
-  case 4:
-    r = valid_observable[Nobservables] && valid_observable[Nobservables + 1];
-    break;
-  default:
-    r = false;
-  }
-  return r;
+int valid_derived_observable(int n){ // we define which observables are needed for each derived observable
+	int r = 0;
+	switch(n){
+		case 0: r = valid_observable[Nobservables+2] && valid_observable[Nobservables+8]; break;
+		case 1: r = valid_observable[Nobservables+2] && valid_observable[Nobservables+9]; break;
+		case 2: r = valid_observable[Nobservables+4] && valid_observable[Nobservables+11]; break;
+		case 3: r = valid_observable[Nobservables+4] && valid_observable[Nobservables+12]; break;
+		case 4: r = valid_observable[Nobservables] && valid_observable[Nobservables+1]; break;
+	        case 5: r = valid_observable[Nobservables+2] && valid_observable[Nobservables+15]; break;
+	        case 6: r = valid_observable[Nobservables+2] && valid_observable[Nobservables+8] && valid_observable[Nobservables+9]; break;
+		case 7: r = valid_observable[Nobservables+2] && valid_observable[Nobservables+9] && valid_observable[Nobservables+15]; break;
+	}
+	return r;
 }
 
-double compute_derived_observable(int n) { // we compute the derived observables
-
-  const int susceptibility_start = N_derived_observables_base;                          // Index 8
-  const int ratio_start          = susceptibility_start + N_specgap_susceptibilities; // Index 8 + KMAX
-
-  if (n >= ratio_start) {
-      size_t kk = n - ratio_start;
-      return -(mean_O[Nobservables + 14 + kk] - beta_div2_pow_factorial[kk + 1].get_double()
-      * mean_O[Nobservables + 2] * mean_O[Nobservables + 2]) /
-             (mean_O[Nobservables + 14 + kk+1] - beta_div2_pow_factorial[kk + 2].get_double()
-      * mean_O[Nobservables + 2] * mean_O[Nobservables + 2]);
-  } 
-  else if (n >= susceptibility_start) {
-      size_t kk = n - susceptibility_start;
-      return mean_O[Nobservables + 14 + kk] - (beta_div2_pow_factorial[kk+1]).get_double()
-      * mean_O[Nobservables + 2] * mean_O[Nobservables + 2];
-  }  
-
-  // if (n >= ratio_start) {
-  //     size_t kk = n - ratio_start;
-  //     return (kk+1)* (mean_O[Nobservables + 14 + kk] - (std::pow(-beta, kk + 1) / (2 << kk) / (kk+1))
-  //     * mean_O[Nobservables + 2] * mean_O[Nobservables + 2]) /
-  //            (mean_O[Nobservables + 14 + kk+1] - (std::pow(-beta, kk + 2) / (4 << kk) / (kk+2))
-  //     * mean_O[Nobservables + 2] * mean_O[Nobservables + 2]);
-  // } 
-  // else if (n >= susceptibility_start) {
-  //     size_t kk = n - susceptibility_start;
-  //     return mean_O[Nobservables + 14 + kk] - (std::pow(beta, kk + 1) / (2 << kk) / (kk+1))
-  //     * mean_O[Nobservables + 2] * mean_O[Nobservables + 2];
-  // }  
-
-  double R = 0;
-  switch (n) {
-  case 0:
-    R = mean_O[Nobservables + 8] -
-        beta * mean_O[Nobservables + 2] * mean_O[Nobservables + 2];
-    break;
-  case 1:
-    R = mean_O[Nobservables + 9] - (beta * mean_O[Nobservables + 2]) *
-                                       (beta * mean_O[Nobservables + 2]) / 8;
-    break;
-  case 2:
-    R = mean_O[Nobservables + 11] -
-        beta * mean_O[Nobservables + 4] * mean_O[Nobservables + 4];
-    break;
-  case 3:
-    R = mean_O[Nobservables + 12] - (beta * mean_O[Nobservables + 4]) *
-                                        (beta * mean_O[Nobservables + 4]) / 8;
-    break;
-  case 4:
-    R = beta * beta *
-        (mean_O[Nobservables + 1] -
-         (mean_O[Nobservables]) * (mean_O[Nobservables]));
-    break;
-  }
-  return R;
+double compute_derived_observable(int n){ // we compute the derived observables
+	double R = 0;
+	switch(n){
+		case 0 : R = mean_O[Nobservables+8] - beta*mean_O[Nobservables+2]*mean_O[Nobservables+2]; break;
+		case 1 : R = mean_O[Nobservables+9] - (beta*mean_O[Nobservables+2])*(beta*mean_O[Nobservables+2])/8; break;
+		case 2 : R = mean_O[Nobservables+11] - beta*mean_O[Nobservables+4]*mean_O[Nobservables+4]; break;
+		case 3 : R = mean_O[Nobservables+12] - (beta*mean_O[Nobservables+4])*(beta*mean_O[Nobservables+4])/8; break;
+		case 4 : R = beta*beta*(mean_O[Nobservables+1] -  (mean_O[Nobservables])*(mean_O[Nobservables])); break;
+	case 5 : R = mean_O[Nobservables+15] - beta*(beta*mean_O[Nobservables+2])*(beta*mean_O[Nobservables+2])/24.0; break;
+	case 6 : R = (mean_O[Nobservables+8] - beta*mean_O[Nobservables+2]*mean_O[Nobservables+2]) / 2.0 /  (mean_O[Nobservables+9] - (beta*mean_O[Nobservables+2])*(beta*mean_O[Nobservables+2])/8); break;
+	case 7 : R = 2 * (mean_O[Nobservables+9] - (beta*mean_O[Nobservables+2])*(beta*mean_O[Nobservables+2])/8) / (mean_O[Nobservables+15] - beta*(beta*mean_O[Nobservables+2])*(beta*mean_O[Nobservables+2])/24.0); break;
+	       
+	}
+	return R;
 }
